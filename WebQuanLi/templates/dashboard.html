@@ -141,6 +141,16 @@
         if (lastSeenEl) lastSeenEl.textContent = 'Vừa xong';
     }
 
+    function formatVietnamDateTime(value) {
+        if (!value) return 'N/A';
+        const date = value instanceof Date ? value : new Date(value);
+        if (Number.isNaN(date.getTime())) return 'N/A';
+        return date.toLocaleString('vi-VN', {
+            timeZone: 'Asia/Ho_Chi_Minh',
+            hour12: false,
+        });
+    }
+
     function updateGpsSummary(data) {
         const el = document.getElementById('gps-latest-summary');
         if (!el) return;
@@ -351,7 +361,7 @@
         const row = document.createElement('tr');
         row.className = 'alert-row alert-new';
         row.innerHTML = `
-        <td>${data.timestamp ? new Date(data.timestamp).toLocaleString('vi-VN') : 'N/A'}</td>
+        <td>${formatVietnamDateTime(data.timestamp)}</td>
         <td><span class="badge badge-type">${data.alert_type || 'DROWSINESS'}</span></td>
         <td><span class="badge badge-level-${data.level || 'WARNING'}">${data.level || 'N/A'}</span></td>
         <td>${data.ear ? data.ear.toFixed(2) : '—'}</td>
@@ -371,7 +381,7 @@
         const row = document.createElement('tr');
         row.className = 'alert-row alert-mismatch';
         row.innerHTML = `
-        <td>${data.timestamp ? new Date(data.timestamp).toLocaleString('vi-VN') : 'N/A'}</td>
+        <td>${formatVietnamDateTime(data.timestamp)}</td>
         <td><span class="badge badge-danger">FACE MISMATCH</span></td>
         <td><span class="badge badge-level-CRITICAL">CRITICAL</span></td>
         <td>—</td>
@@ -389,7 +399,7 @@
         const row = document.createElement('tr');
         row.className = 'alert-row alert-new';
         row.innerHTML = `
-        <td>${new Date().toLocaleString('vi-VN')}</td>
+        <td>${formatVietnamDateTime(new Date())}</td>
         <td><span class="badge" style="background-color: #6c757d;">SYSTEM ERR</span></td>
         <td><span class="badge badge-level-WARNING">WARNING</span></td>
         <td>—</td>
@@ -464,7 +474,7 @@
                 </div>
                 <div class="session-info">
                     <span class="session-active">🟢 Đang chạy</span>
-                    <p>⏱ Check-in: ${new Date(data.checkin_at).toLocaleString('vi-VN')}</p>
+                    <p>⏱ Check-in: ${formatVietnamDateTime(data.checkin_at)}</p>
                     <p>⏹ Check-out: --:--:-- (chưa kết thúc)</p>
                     <p class="session-timer" data-checkin="${data.checkin_at}">⏳ Thời gian lái: 00:00:00</p>
                 </div>
@@ -483,7 +493,7 @@
         }
         const checkout = document.querySelector('.session-info p:nth-child(3)');
         if (checkout) {
-            checkout.textContent = '⏹ Check-out: ' + new Date(data.checkout_at).toLocaleString('vi-VN');
+            checkout.textContent = '⏹ Check-out: ' + formatVietnamDateTime(data.checkout_at);
         }
     }
 

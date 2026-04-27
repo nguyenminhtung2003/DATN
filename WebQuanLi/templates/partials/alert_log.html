@@ -1,6 +1,6 @@
 {% for alert in recent_alerts %}
 <tr class="alert-row {% if alert.alert_type and alert.alert_type.value == 'FACE_MISMATCH' %}alert-mismatch{% endif %}">
-    <td>{{ alert.timestamp.strftime('%H:%M:%S — %d/%m/%Y') if alert.timestamp else 'N/A' }}</td>
+    <td>{{ format_vn_datetime(alert.timestamp) if alert.timestamp else 'N/A' }}</td>
     <td>
         <span class="badge {% if alert.alert_type and alert.alert_type.value == 'FACE_MISMATCH' %}badge-danger{% elif alert.alert_type and alert.alert_type.value == 'TEST' %}badge-info{% else %}badge-type{% endif %}">
             {{ alert.alert_type.value if alert.alert_type else 'N/A' }}

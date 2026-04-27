@@ -11,6 +11,7 @@ from app.database import get_db
 from app.auth.dependencies import get_current_user
 from app.models import User, Vehicle, DriverSession, SystemAlert, HardwareStatus
 from app.core.event_bus import event_bus
+from app.services.time_service import format_vn_datetime
 from app.ws.jetson_handler import manager
 
 router = APIRouter(tags=["dashboard"])
@@ -173,6 +174,7 @@ async def dashboard_page(
         "hw_status": hw_status,
         "active_session": active_session,
         "recent_alerts": recent_alerts,
+        "format_vn_datetime": format_vn_datetime,
         "cached_state": state,
         "connection_status": "online" if is_connected else "offline",
         "hardware_badges": _build_hardware_badges(hw_status, cached_hardware),

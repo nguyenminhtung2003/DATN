@@ -14,7 +14,7 @@ from app.auth.dependencies import get_current_user
 from app.core.event_bus import event_bus
 from app.database import Base, get_db
 from app.main import app
-from app.models import User, Vehicle
+from app.models import AlertLevel, AlertType, SystemAlert, User, Vehicle
 from app.ws.jetson_handler import manager
 
 
@@ -50,14 +50,23 @@ class DashboardRealtimeContextTest(unittest.TestCase):
         async with self.engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
         async with self.session_factory() as db:
-            db.add(
-                Vehicle(
-                    plate_number="59A-12345",
-                    name="Xe Demo 01",
-                    device_id=self.device_id,
-                    manager_phone="0901234567",
-                )
+            vehicle = Vehicle(
+                plate_number="59A-12345",
+                name="Xe Demo 01",
+                device_id=self.device_id,
+                manager_phone="0901234567",
             )
+            db.add(vehicle)
+            await db.flush()
+            db.add(SystemAlert(
+                vehicle_id=vehicle.id,
+                alert_type=AlertType.DROWSINESS,
+                alert_level=AlertLevel.LEVEL_1,
+                ear_value=0.22,
+                mar_value=0.04,
+                message="timezone alert",
+                timestamp=datetime(2026, 4, 27, 17, 13, 30),
+            ))
             await db.commit()
 
     async def _request(self, method, path, **kwargs):
@@ -140,3 +149,13 @@ class DashboardRealtimeContextTest(unittest.TestCase):
         self.assertNotIn("lastHeartbeatAt", response.text)
         self.assertNotIn("sse:hardware", response.text)
         self.assertNotIn("updateConnectionStatus('offline')", response.text)
+        self.assertIn("function formatVietnamDateTime", response.text)
+        self.assertIn("timeZone: 'Asia/Ho_Chi_Minh'", response.text)
+        self.assertNotIn("new Date(data.timestamp).toLocaleString('vi-VN')", response.text)
+
+    def test_dashboard_alert_log_displays_vietnam_time(self):
+        response = asyncio.run(self._request("GET", "/"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("00:13:30 - 28/04/2026", response.text)
+        self.assertNotIn("17:13:30", response.text)
