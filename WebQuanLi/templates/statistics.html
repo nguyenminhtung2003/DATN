@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Thống Kê{% endblock %}
+
+{% block content %}
+<div class="dashboard-header">
+    <h1>📈 Thống Kê & Báo Cáo</h1>
+    <p class="text-muted">Phân tích dữ liệu cảnh báo buồn ngủ trong 7 ngày qua</p>
+</div>
+
+<!-- KPI Cards -->
+<div class="kpi-grid" id="kpi-cards">
+    <div class="kpi-card">
+        <div class="kpi-icon">🔔</div>
+        <div class="kpi-value" id="kpi-alerts">--</div>
+        <div class="kpi-label">Tổng cảnh báo / tuần</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-icon">📋</div>
+        <div class="kpi-value" id="kpi-sessions">--</div>
+        <div class="kpi-label">Tổng ca làm việc</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-icon">⏱️</div>
+        <div class="kpi-value" id="kpi-hours">--</div>
+        <div class="kpi-label">Tổng giờ lái xe</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-icon">📊</div>
+        <div class="kpi-value" id="kpi-avg">--</div>
+        <div class="kpi-label">TB giờ/ca</div>
+    </div>
+</div>
+
+<!-- Charts Row -->
+<div class="dashboard-grid-2col">
+    <section class="panel">
+        <h2 class="panel-title">📊 Cảnh báo theo ngày</h2>
+        <div class="chart-container">
+            <canvas id="dailyChart"></canvas>
+        </div>
+    </section>
+
+    <section class="panel">
+        <h2 class="panel-title">🏆 Top tài xế bị cảnh báo</h2>
+        <div class="chart-container">
+            <canvas id="topDriversChart"></canvas>
+        </div>
+    </section>
+</div>
+
+<!-- Heatmap -->
+<section class="panel">
+    <h2 class="panel-title">🌡️ Heatmap cảnh báo theo giờ</h2>
+    <div class="chart-container chart-wide">
+        <canvas id="heatmapChart"></canvas>
+    </div>
+</section>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/charts.js"></script>
+<script>
+    loadStatistics();
+</script>
+{% endblock %}

@@ -1,0 +1,515 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="trust-banking-dashboard">
+    <div class="dashboard-header command-hero trust-hero">
+        <div class="hero-copy">
+            <span class="eyebrow">TRUST SAFETY OVERVIEW</span>
+            <h1>📊 Bảng Điều Khiển Giám Sát</h1>
+            <p class="dashboard-subtitle">Một màn hình quản lý tin cậy cho RFID, xác minh khuôn mặt, cảnh báo buồn ngủ
+                và trạng thái Jetson Nano theo thời gian thực.</p>
+        </div>
+        <div class="header-meta">
+            <span class="vehicle-plate">🚗 {{ vehicle.plate_number if vehicle else 'N/A' }}</span>
+            <button class="connection-badge"
+                    id="connection-status"
+                    type="button"
+                    data-vehicle-id="{{ vehicle.id if vehicle else 1 }}"
+                    data-monitoring-url="/api/vehicles/{{ vehicle.id if vehicle else 1 }}/monitoring"
+                    data-connection-state="{{ connection_status }}"
+                    data-next-monitoring-state="{{ 'disconnect' if connection_status == 'online' else 'connect' }}"
+                    aria-label="{{ 'Kết nối với Jetson. Bấm để ngắt giám sát.' if connection_status == 'online' else 'Mất kết nối với Jetson. Bấm để gửi lệnh kết nối giám sát.' }}"
+                    title="{{ 'Bấm để ngắt giám sát' if connection_status == 'online' else 'Bấm để gửi lệnh kết nối giám sát' }}">
+                {% if connection_status == 'online' %}
+                <span class="status-dot online"></span><span class="connection-text">Kết nối</span>
+                {% else %}
+                <span class="status-dot offline"></span><span class="connection-text">Mất kết nối</span>
+                {% endif %}
+            </button>
+        </div>
+    </div>
+
+    <div class="overview-strip">
+        <div class="overview-chip">
+            <span class="chip-label">Phiên giám sát</span>
+            <strong>{{ 'Đang hoạt động' if active_session else 'Chờ RFID' }}</strong>
+        </div>
+        <div class="overview-chip">
+            <span class="chip-label">Xác minh</span>
+            <strong>RFID + Face ID</strong>
+        </div>
+        <div class="overview-chip">
+            <span class="chip-label">Thiết bị</span>
+            <strong>{{ device_id }}</strong>
+        </div>
+        <div class="overview-chip">
+            <span class="chip-label">Cảnh báo gần đây</span>
+            <strong>{{ recent_alerts|length }}</strong>
+        </div>
+        <div class="overview-chip">
+            <span class="chip-label">Queue Chờ (Jetson)</span>
+            <strong id="queue-pending-count">{{ queue_pending_initial }}</strong>
+        </div>
+        <div class="overview-chip">
+            <span class="chip-label">Last Seen</span>
+            <strong id="last-seen-text">{{ last_seen_text }}</strong>
+        </div>
+        <div class="overview-chip">
+            <span class="chip-label">GPS Gần Nhất</span>
+            <strong id="gps-latest-summary">{{ latest_gps_summary }}</strong>
+        </div>
+    </div>
+
+    <!-- Realtime Connection -->
+    <div id="dashboard-realtime-root" data-stream-url="/sse/vehicle/{{ device_id }}">
+
+        <!-- Hardware Status -->
+        <section class="panel" id="hardware-section">
+            <h2 class="panel-title">🔧 Trạng Thái Phần Cứng</h2>
+            <div class="hardware-grid" id="hardware-badges">
+                {% include "partials/hardware_status.html" %}
+            </div>
+        </section>
+
+        <!-- Driver Info + Map Row -->
+        <div class="dashboard-grid-2col">
+            <!-- Driver Info -->
+            <section class="panel" id="driver-section">
+                <h2 class="panel-title">👤 Thông Tin Tài Xế</h2>
+                <div id="driver-card">
+                    {% include "partials/driver_info.html" %}
+                </div>
+            </section>
+
+            <!-- Map -->
+            <section class="panel" id="map-section">
+                <h2 class="panel-title">🗺️ Vị Trí GPS</h2>
+                <div id="map-container" style="height: 350px; border-radius: 8px; overflow: hidden;">
+                    <div id="map"
+                         style="width: 100%; height: 100%;"
+                         data-lat="{{ latest_gps.lat if latest_gps else '' }}"
+                         data-lng="{{ latest_gps.lng if latest_gps else '' }}"
+                         data-speed="{{ latest_gps.speed if latest_gps else '' }}"></div>
+                </div>
+            </section>
+        </div>
+
+        <!-- Alert Log -->
+        <section class="panel" id="alert-section">
+            <h2 class="panel-title">🔔 Nhật Ký Cảnh Báo <span class="badge badge-count" id="alert-count">{{
+                    recent_alerts|length }}</span></h2>
+            <div class="table-responsive">
+                <table class="data-table" id="alert-table">
+                    <thead>
+                        <tr>
+                            <th>Thời gian</th>
+                            <th>Loại</th>
+                            <th>Mức độ</th>
+                            <th>EAR</th>
+                            <th>MAR</th>
+                            <th>Chi tiết</th>
+                        </tr>
+                    </thead>
+                    <tbody id="alert-log-body">
+                        {% include "partials/alert_log.html" %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Admin Controls (only for admin) -->
+        {% if user.role == 'admin' %}
+        <section class="panel admin-panel" id="admin-section">
+            {% include "partials/admin_controls.html" %}
+        </section>
+        {% endif %}
+
+    </div><!-- end SSE wrapper -->
+</div><!-- end trust banking dashboard -->
+
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/map.js"></script>
+<script>
+    const DASHBOARD_STREAM_URL = "/sse/vehicle/{{ device_id }}";
+    let dashboardEventSource = null;
+
+    function markLastSeenNow() {
+        const lastSeenEl = document.getElementById('last-seen-text');
+        if (lastSeenEl) lastSeenEl.textContent = 'Vừa xong';
+    }
+
+    function updateGpsSummary(data) {
+        const el = document.getElementById('gps-latest-summary');
+        if (!el) return;
+        if (data.lat === undefined || data.lng === undefined) {
+            el.textContent = 'Chưa có fix GPS';
+            return;
+        }
+        const parts = [Number(data.lat).toFixed(6) + ', ' + Number(data.lng).toFixed(6)];
+        if (data.speed !== undefined && data.speed !== null) {
+            parts.push(Number(data.speed).toFixed(1) + ' km/h');
+        }
+        el.textContent = parts.join(' • ');
+    }
+
+    function parseRealtimePayload(event) {
+        try {
+            return JSON.parse(event.data || '{}');
+        } catch (error) {
+            console.warn('Invalid realtime payload', error);
+            return {};
+        }
+    }
+
+    function handleRealtimeEvent(type, data) {
+        if (type === 'hardware') {
+            markLastSeenNow();
+            updateHardwareBadges(data);
+            return;
+        }
+        if (type === 'driver') {
+            markLastSeenNow();
+            updateDriverCard(data);
+            return;
+        }
+        if (type === 'gps') {
+            markLastSeenNow();
+            updateMap(data.lat, data.lng, data.speed);
+            updateGpsSummary(data);
+            return;
+        }
+        if (type === 'alert') {
+            markLastSeenNow();
+            addAlertRow(data);
+            return;
+        }
+        if (type === 'face_mismatch') {
+            markLastSeenNow();
+            addMismatchAlert(data);
+            return;
+        }
+        if (type === 'verify_error') {
+            markLastSeenNow();
+            addVerifyErrorAlert(data);
+            return;
+        }
+        if (type === 'verify_snapshot') {
+            markLastSeenNow();
+            showVerifyStatus(data);
+            return;
+        }
+        if (type === 'session_start') {
+            markLastSeenNow();
+            startSession(data);
+            return;
+        }
+        if (type === 'session_end') {
+            markLastSeenNow();
+            endSession(data);
+            return;
+        }
+        if (type === 'connection') {
+            updateConnectionStatus(data.status);
+            return;
+        }
+        if (type === 'ota_status') {
+            markLastSeenNow();
+            const el = document.getElementById('upload-status');
+            if (el) {
+                el.innerHTML = data.status === 'APPLIED'
+                    ? '<div class="alert-success">✅ Cập nhật thành công: ' + data.filename + '</div>'
+                    : '<div class="alert-danger">❌ Cập nhật thất bại: ' + (data.error || data.filename) + '</div>';
+            }
+        }
+    }
+
+    function initDashboardEventSource() {
+        if (!window.EventSource) return;
+        dashboardEventSource = new EventSource(DASHBOARD_STREAM_URL);
+        dashboardEventSource.addEventListener('hardware', (event) => handleRealtimeEvent('hardware', parseRealtimePayload(event)));
+        dashboardEventSource.addEventListener('driver', (event) => handleRealtimeEvent('driver', parseRealtimePayload(event)));
+        dashboardEventSource.addEventListener('gps', (event) => handleRealtimeEvent('gps', parseRealtimePayload(event)));
+        dashboardEventSource.addEventListener('alert', (event) => handleRealtimeEvent('alert', parseRealtimePayload(event)));
+        dashboardEventSource.addEventListener('face_mismatch', (event) => handleRealtimeEvent('face_mismatch', parseRealtimePayload(event)));
+        dashboardEventSource.addEventListener('verify_error', (event) => handleRealtimeEvent('verify_error', parseRealtimePayload(event)));
+        dashboardEventSource.addEventListener('verify_snapshot', (event) => handleRealtimeEvent('verify_snapshot', parseRealtimePayload(event)));
+        dashboardEventSource.addEventListener('session_start', (event) => handleRealtimeEvent('session_start', parseRealtimePayload(event)));
+        dashboardEventSource.addEventListener('session_end', (event) => handleRealtimeEvent('session_end', parseRealtimePayload(event)));
+        dashboardEventSource.addEventListener('connection', (event) => handleRealtimeEvent('connection', parseRealtimePayload(event)));
+        dashboardEventSource.addEventListener('ota_status', (event) => handleRealtimeEvent('ota_status', parseRealtimePayload(event)));
+    }
+
+    async function sendMonitoringCommand() {
+        const button = document.getElementById('connection-status');
+        if (!button || button.disabled) return;
+        const state = button.dataset.nextMonitoringState || 'connect';
+        const endpoint = button.dataset.monitoringUrl;
+        button.disabled = true;
+        try {
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: new URLSearchParams({ state }),
+            });
+            const payload = await response.json();
+            if (payload.connection_status) {
+                updateConnectionStatus(payload.connection_status);
+            }
+            if (payload.next_state) {
+                button.dataset.nextMonitoringState = payload.next_state;
+            }
+            if (payload.message) {
+                button.title = payload.message;
+            }
+        } catch (error) {
+            button.title = 'Không gửi được lệnh giám sát';
+        } finally {
+            button.disabled = false;
+        }
+    }
+
+    // Hardware badges update
+    function updateHardwareBadges(data) {
+        const boolValue = (explicitKey, legacyKey, fallback = false) => {
+            if (data[explicitKey] !== undefined && data[explicitKey] !== null) return data[explicitKey] === true;
+            if (legacyKey && data[legacyKey] !== undefined && data[legacyKey] !== null) return data[legacyKey] === true;
+            return fallback === true;
+        };
+        const optionalValue = (explicitKey, legacyKey) => {
+            if (data[explicitKey] !== undefined && data[explicitKey] !== null) return data[explicitKey] === true;
+            if (legacyKey && data[legacyKey] !== undefined && data[legacyKey] !== null) return data[legacyKey] === true;
+            return null;
+        };
+        const combinedOk = (...values) => {
+            const explicitValues = values.filter((value) => value !== null);
+            if (!explicitValues.length) return false;
+            return explicitValues.every((value) => value === true);
+        };
+        const gpsUartOk = optionalValue('gps_uart_ok', 'gps');
+        const gpsFixOk = optionalValue('gps_fix_ok');
+        const gpsOk = combinedOk(gpsUartOk, gpsFixOk);
+        const speakerAdapterOk = optionalValue('bluetooth_adapter_ok', 'bluetooth_adapter');
+        const speakerConnectedOk = optionalValue('bluetooth_speaker_connected', 'bluetooth');
+        const speakerOutputOk = optionalValue('speaker_output_ok', 'speaker');
+        const speakerOk = combinedOk(speakerAdapterOk, speakerConnectedOk, speakerOutputOk);
+        const badges = [
+            { key: 'power', label: 'Nguồn', icon: '⚡', ok: boolValue('power') },
+            { key: 'rfid', label: 'RFID', icon: '💳', ok: boolValue('rfid_reader_ok', 'rfid') },
+            { key: 'gps', label: 'GPS', icon: '📍', ok: gpsOk },
+            { key: 'camera', label: 'Camera', icon: '📷', ok: boolValue('camera_ok', 'camera') },
+            { key: 'speaker', label: 'Loa', icon: '🔊', ok: speakerOk },
+        ];
+        const container = document.getElementById('hardware-badges');
+        let html = '';
+        for (const info of badges) {
+            const ok = info.ok;
+            html += `<div class="hw-badge ${ok ? 'hw-ok' : 'hw-error'}" data-hw-key="${info.key}">
+            <span class="hw-icon">${info.icon}</span>
+            <span class="hw-label">${info.label}</span>
+            <span class="hw-status">${ok ? '✅' : '❌'}</span>
+        </div>`;
+        }
+        container.innerHTML = html;
+
+        if (data.queue_pending !== undefined) {
+            const queueCount = document.getElementById('queue-pending-count');
+            if (queueCount) queueCount.textContent = data.queue_pending;
+        }
+    }
+
+    // Driver card update
+    function updateDriverCard(data) {
+        const card = document.getElementById('driver-card');
+        const faceHtml = data.driver_face_image || data.face_image_path
+            ? `<img src="${data.driver_face_image || data.face_image_path}" alt="driver face" class="driver-face-img">`
+            : '<div class="driver-avatar">👤</div>';
+        card.innerHTML = `
+        <div class="driver-info-card">
+            ${faceHtml}
+            <div class="driver-details">
+                <h3>${data.name || 'N/A'}</h3>
+                <div class="driver-meta-grid">
+                    <p><span class="label">RFID</span><strong>${data.rfid || data.rfid_tag || 'N/A'}</strong></p>
+                    <p><span class="label">Trạng thái</span><strong>Đang nhận diện</strong></p>
+                </div>
+                <div id="verify-status" class="verify-status">
+                    <span class="verify-badge verify-demo">Đang chờ xác minh</span>
+                </div>
+            </div>
+        </div>`;
+    }
+
+    // Alert row
+    function addAlertRow(data) {
+        const tbody = document.getElementById('alert-log-body');
+        const row = document.createElement('tr');
+        row.className = 'alert-row alert-new';
+        row.innerHTML = `
+        <td>${data.timestamp ? new Date(data.timestamp).toLocaleString('vi-VN') : 'N/A'}</td>
+        <td><span class="badge badge-type">${data.alert_type || 'DROWSINESS'}</span></td>
+        <td><span class="badge badge-level-${data.level || 'WARNING'}">${data.level || 'N/A'}</span></td>
+        <td>${data.ear ? data.ear.toFixed(2) : '—'}</td>
+        <td>${data.mar ? data.mar.toFixed(2) : '—'}</td>
+        <td>Cảnh báo buồn ngủ</td>`;
+        tbody.insertBefore(row, tbody.firstChild);
+        // Update count
+        const count = document.getElementById('alert-count');
+        count.textContent = parseInt(count.textContent) + 1;
+        // Flash animation
+        setTimeout(() => row.classList.remove('alert-new'), 2000);
+    }
+
+    // Face mismatch alert
+    function addMismatchAlert(data) {
+        const tbody = document.getElementById('alert-log-body');
+        const row = document.createElement('tr');
+        row.className = 'alert-row alert-mismatch';
+        row.innerHTML = `
+        <td>${data.timestamp ? new Date(data.timestamp).toLocaleString('vi-VN') : 'N/A'}</td>
+        <td><span class="badge badge-danger">FACE MISMATCH</span></td>
+        <td><span class="badge badge-level-CRITICAL">CRITICAL</span></td>
+        <td>—</td>
+        <td>—</td>
+        <td>RFID: ${data.rfid_tag} | Dự kiến: ${data.expected}</td>`;
+        tbody.insertBefore(row, tbody.firstChild);
+        // Trigger red flash on entire page
+        document.body.classList.add('mismatch-flash');
+        setTimeout(() => document.body.classList.remove('mismatch-flash'), 3000);
+    }
+
+    // Verify error (system/hardware diagnostic)
+    function addVerifyErrorAlert(data) {
+        const tbody = document.getElementById('alert-log-body');
+        const row = document.createElement('tr');
+        row.className = 'alert-row alert-new';
+        row.innerHTML = `
+        <td>${new Date().toLocaleString('vi-VN')}</td>
+        <td><span class="badge" style="background-color: #6c757d;">SYSTEM ERR</span></td>
+        <td><span class="badge badge-level-WARNING">WARNING</span></td>
+        <td>—</td>
+        <td>—</td>
+        <td>Lỗi xác thực (RFID: ${data.rfid_tag}): ${data.reason}</td>`;
+        tbody.insertBefore(row, tbody.firstChild);
+
+        // Update count
+        const count = document.getElementById('alert-count');
+        count.textContent = parseInt(count.textContent) + 1;
+        // Flash animation
+        setTimeout(() => row.classList.remove('alert-new'), 2000);
+    }
+
+    function verifyStatusLabel(status) {
+        const labels = {
+            'VERIFIED': 'Đã xác minh',
+            'DEMO_VERIFIED': 'Demo verified',
+            'MISMATCH': 'Sai khuôn mặt',
+        };
+        return labels[status] || status || 'N/A';
+    }
+
+    function verifyStatusClass(status) {
+        if (status === 'VERIFIED') return 'verify-ok';
+        if (status === 'DEMO_VERIFIED') return 'verify-demo';
+        return 'verify-fail';
+    }
+
+    function showVerifyStatus(data) {
+        const snapshotHtml = data.snapshot_path
+            ? `<img src="${data.snapshot_path}" alt="verification snapshot" class="verify-snapshot-img">`
+            : '';
+        const html = `
+            <span class="verify-badge ${verifyStatusClass(data.status)}">${verifyStatusLabel(data.status)}</span>
+            <p class="verify-message">${data.message || ''}</p>
+            ${snapshotHtml}`;
+        const container = document.getElementById('verify-status');
+        if (container) {
+            container.innerHTML = html;
+            return;
+        }
+
+        const details = document.querySelector('#driver-card .driver-details');
+        if (!details) return;
+        const block = document.createElement('div');
+        block.id = 'verify-status';
+        block.className = 'verify-status';
+        block.innerHTML = html;
+        details.appendChild(block);
+    }
+
+    // Session management
+    function startSession(data) {
+        const card = document.getElementById('driver-card');
+        const faceHtml = data.driver_face_image
+            ? `<img src="${data.driver_face_image}" alt="face" class="driver-face-img">`
+            : '<div class="driver-avatar">👤</div>';
+        card.innerHTML = `
+        <div class="driver-info-card">
+            ${faceHtml}
+            <div class="driver-details">
+                <h3>${data.driver_name}</h3>
+                <div class="driver-meta-grid">
+                    <p><span class="label">RFID</span><strong>${data.rfid_tag}</strong></p>
+                    <p><span class="label">SĐT</span><strong>${data.driver_phone || 'N/A'}</strong></p>
+                    <p><span class="label">Tuổi</span><strong>${data.driver_age || 'N/A'}</strong></p>
+                    <p><span class="label">Giới tính</span><strong>${data.driver_gender || 'N/A'}</strong></p>
+                </div>
+                <div id="verify-status" class="verify-status">
+                    <span class="verify-badge verify-demo">Đang chờ trạng thái xác minh</span>
+                </div>
+                <div class="session-info">
+                    <span class="session-active">🟢 Đang chạy</span>
+                    <p>⏱ Check-in: ${new Date(data.checkin_at).toLocaleString('vi-VN')}</p>
+                    <p>⏹ Check-out: --:--:-- (chưa kết thúc)</p>
+                    <p class="session-timer" data-checkin="${data.checkin_at}">⏳ Thời gian lái: 00:00:00</p>
+                </div>
+            </div>
+        </div>`;
+        initSessionTimer();
+    }
+
+    function endSession(data) {
+        const timerEl = document.querySelector('.session-timer');
+        if (timerEl) timerEl.dataset.stopped = 'true';
+        const activeEl = document.querySelector('.session-active');
+        if (activeEl) {
+            activeEl.className = 'session-ended';
+            activeEl.textContent = '⬛ Đã kết thúc';
+        }
+        const checkout = document.querySelector('.session-info p:nth-child(3)');
+        if (checkout) {
+            checkout.textContent = '⏹ Check-out: ' + new Date(data.checkout_at).toLocaleString('vi-VN');
+        }
+    }
+
+    // Connection status
+    function updateConnectionStatus(status) {
+        const badge = document.getElementById('connection-status');
+        if (!badge) return;
+        const isOnline = status === 'online';
+        badge.dataset.connectionState = isOnline ? 'online' : 'offline';
+        badge.dataset.nextMonitoringState = isOnline ? 'disconnect' : 'connect';
+        badge.setAttribute(
+            'aria-label',
+            isOnline
+                ? 'Kết nối với Jetson. Bấm để ngắt giám sát.'
+                : 'Mất kết nối với Jetson. Bấm để gửi lệnh kết nối giám sát.'
+        );
+        badge.title = isOnline ? 'Bấm để ngắt giám sát' : 'Bấm để gửi lệnh kết nối giám sát';
+        badge.innerHTML = isOnline
+            ? '<span class="status-dot online"></span><span class="connection-text">Kết nối</span>'
+            : '<span class="status-dot offline"></span><span class="connection-text">Mất kết nối</span>';
+    }
+
+    initDashboardEventSource();
+    const connectionButton = document.getElementById('connection-status');
+    if (connectionButton) {
+        connectionButton.addEventListener('click', sendMonitoringCommand);
+    }
+</script>
+{% endblock %}

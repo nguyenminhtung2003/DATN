@@ -1,0 +1,40 @@
+{% if active_session %}
+<div class="driver-info-card">
+    {% if active_session.driver and active_session.driver.face_image_path %}
+    <img src="{{ active_session.driver.face_image_path }}" alt="face" class="driver-face-img">
+    {% else %}
+    <div class="driver-avatar">👤</div>
+    {% endif %}
+    <div class="driver-details">
+        <h3>{{ active_session.driver.name if active_session.driver else 'N/A' }}</h3>
+        <div class="driver-meta-grid">
+            <p><span class="label">RFID</span><strong>{{ active_session.driver.rfid_tag if active_session.driver else 'N/A' }}</strong></p>
+            <p><span class="label">SĐT</span><strong>{{ active_session.driver.phone if active_session.driver else 'N/A' }}</strong></p>
+        {% if active_session.driver %}
+            <p><span class="label">Tuổi</span><strong>{{ active_session.driver.age or 'N/A' }}</strong></p>
+            <p><span class="label">Giới tính</span><strong>{{ active_session.driver.gender or 'N/A' }}</strong></p>
+        {% endif %}
+        </div>
+        <div id="verify-status" class="verify-status">
+            <span class="verify-badge verify-demo">Đang chờ trạng thái xác minh</span>
+        </div>
+        <div class="session-info">
+            <span class="session-active">🟢 Đang chạy</span>
+            <p>⏱ Check-in: {{ active_session.checkin_at.strftime('%H:%M:%S — %d/%m/%Y') if active_session.checkin_at
+                else 'N/A' }}</p>
+            <p>⏹ Check-out: --:--:-- (chưa kết thúc)</p>
+            <p class="session-timer"
+                data-checkin="{{ active_session.checkin_at.isoformat() if active_session.checkin_at else '' }}">⏳ Thời
+                gian lái: 00:00:00</p>
+        </div>
+    </div>
+</div>
+{% else %}
+<div class="driver-info-card empty">
+    <div class="driver-avatar">👤</div>
+    <div class="driver-details">
+        <h3>Chưa có tài xế</h3>
+        <p class="text-muted">Đang chờ quẹt thẻ RFID...</p>
+    </div>
+</div>
+{% endif %}

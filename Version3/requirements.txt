@@ -1,0 +1,15 @@
+# DrowsiGuard Version3 dependencies for Jetson Nano A02 / Ubuntu 18.04 / Python 3.6
+#
+# Keep OpenCV/MediaPipe from the Jetson image when available. Installing
+# opencv-python from pip can remove GStreamer support and break CSI camera.
+
+# Runtime integration
+websocket-client==1.3.3
+evdev==1.4.0
+
+# Local dashboard, compatible with Python 3.6
+fastapi==0.63.0
+uvicorn==0.13.4
+
+# Numeric stack. Jetson already has numpy 1.19.4 in the inspected environment.
+numpy==1.19.4

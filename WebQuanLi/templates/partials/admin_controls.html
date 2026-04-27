@@ -1,0 +1,44 @@
+<h3>🛠 Quản Trị Hệ Thống (Admin)</h3>
+
+<!-- Upload Code OTA -->
+<div class="admin-section">
+    <h4>📦 Cập nhật phần mềm Jetson (.py)</h4>
+    <form hx-post="/api/vehicles/{{ vehicle.id if vehicle else 1 }}/update"
+          hx-encoding="multipart/form-data"
+          hx-target="#upload-status"
+          class="upload-form">
+        <input type="file" name="file" accept=".py" required id="ota-file-input">
+        <button type="submit" class="btn btn-warning" id="btn-upload">
+            ⬆️ Ghi đè & Khởi động lại
+        </button>
+    </form>
+    <div id="upload-status"></div>
+</div>
+
+<!-- Test Alert Controls (Toggle On/Off) -->
+<div class="admin-section">
+    <h4>🔊 Kiểm tra Loa Cảnh Báo Trên Xe</h4>
+    <div class="test-buttons">
+        <button hx-post="/api/vehicles/{{ vehicle.id if vehicle else 1 }}/test"
+                hx-vals='{"level": 1, "state": "on"}'
+                hx-swap="outerHTML"
+                class="btn btn-outline-info"
+                id="btn-test-1">
+            ▶ Bật Mức 1
+        </button>
+        <button hx-post="/api/vehicles/{{ vehicle.id if vehicle else 1 }}/test"
+                hx-vals='{"level": 2, "state": "on"}'
+                hx-swap="outerHTML"
+                class="btn btn-outline-warning"
+                id="btn-test-2">
+            ▶ Bật Mức 2
+        </button>
+        <button hx-post="/api/vehicles/{{ vehicle.id if vehicle else 1 }}/test"
+                hx-vals='{"level": 3, "state": "on"}'
+                hx-swap="outerHTML"
+                class="btn btn-outline-danger"
+                id="btn-test-3">
+            ▶ Bật Mức 3
+        </button>
+    </div>
+</div>

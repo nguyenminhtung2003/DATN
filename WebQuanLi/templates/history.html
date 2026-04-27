@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}Lịch Sử{% endblock %}
+
+{% block content %}
+<div class="dashboard-header">
+    <h1>📋 Lịch Sử Cảnh Báo & Ca Làm Việc</h1>
+</div>
+
+<!-- Filter Form -->
+<section class="panel">
+    <h2 class="panel-title">🔍 Bộ lọc</h2>
+    <form method="GET" action="/history" class="filter-form" id="history-filter">
+        <div class="filter-grid">
+            <div class="form-group">
+                <label for="date_from">Từ ngày</label>
+                <input type="date" id="date_from" name="date_from" value="{{ filters.date_from }}">
+            </div>
+            <div class="form-group">
+                <label for="date_to">Đến ngày</label>
+                <input type="date" id="date_to" name="date_to" value="{{ filters.date_to }}">
+            </div>
+            <div class="form-group">
+                <label for="vehicle_id">Xe</label>
+                <select id="vehicle_id" name="vehicle_id">
+                    <option value="">Tất cả</option>
+                    {% for v in vehicles %}
+                    <option value="{{ v.id }}" {% if filters.vehicle_id|string == v.id|string %}selected{% endif %}>
+                        {{ v.plate_number }} — {{ v.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="alert_type">Loại cảnh báo</label>
+                <select id="alert_type" name="alert_type">
+                    <option value="">Tất cả</option>
+                    <option value="DROWSINESS" {% if filters.alert_type == 'DROWSINESS' %}selected{% endif %}>Buồn ngủ</option>
+                    <option value="FACE_MISMATCH" {% if filters.alert_type == 'FACE_MISMATCH' %}selected{% endif %}>Sai khuôn mặt</option>
+                    <option value="TEST" {% if filters.alert_type == 'TEST' %}selected{% endif %}>Test</option>
+                </select>
+            </div>
+            <div class="form-group form-group-btn">
+                <button type="submit" class="btn btn-primary" id="btn-filter">🔍 Lọc</button>
+                <a href="/history" class="btn btn-secondary" id="btn-reset">🔄 Reset</a>
+            </div>
+        </div>
+    </form>
+</section>
+
+<!-- Results -->
+<section class="panel">
+    <h2 class="panel-title">📄 Kết quả <span class="badge badge-count">{{ total }}</span></h2>
+    <div class="table-responsive">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Thời gian</th>
+                    <th>Loại</th>
+                    <th>Mức độ</th>
+                    <th>EAR</th>
+                    <th>MAR</th>
+                    <th>Chi tiết</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for alert in alerts %}
+                <tr class="{% if alert.alert_type and alert.alert_type.value == 'FACE_MISMATCH' %}alert-mismatch{% endif %}">
+                    <td>{{ alert.id }}</td>
+                    <td>{{ alert.timestamp.strftime('%H:%M:%S — %d/%m/%Y') if alert.timestamp else 'N/A' }}</td>
+                    <td><span class="badge {% if alert.alert_type and alert.alert_type.value == 'FACE_MISMATCH' %}badge-danger{% else %}badge-type{% endif %}">{{ alert.alert_type.value if alert.alert_type else 'N/A' }}</span></td>
+                    <td><span class="badge badge-level-{{ alert.alert_level.value if alert.alert_level else 'LEVEL_1' }}">{{ alert.alert_level.value if alert.alert_level else 'N/A' }}</span></td>
+                    <td>{{ '%.2f'|format(alert.ear_value) if alert.ear_value else '—' }}</td>
+                    <td>{{ '%.2f'|format(alert.mar_value) if alert.mar_value else '—' }}</td>
+                    <td>{{ alert.message or '—' }}</td>
+                </tr>
+                {% endfor %}
+                {% if not alerts %}
+                <tr><td colspan="7" class="text-center text-muted">Không có dữ liệu</td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Pagination -->
+    {% if total > per_page %}
+    <div class="pagination">
+        {% if page > 1 %}
+        <a href="/history?page={{ page - 1 }}&date_from={{ filters.date_from }}&date_to={{ filters.date_to }}&vehicle_id={{ filters.vehicle_id }}&alert_type={{ filters.alert_type }}" class="btn btn-secondary">← Trước</a>
+        {% endif %}
+        <span class="page-info">Trang {{ page }} / {{ ((total - 1) // per_page) + 1 }}</span>
+        {% if page * per_page < total %}
+        <a href="/history?page={{ page + 1 }}&date_from={{ filters.date_from }}&date_to={{ filters.date_to }}&vehicle_id={{ filters.vehicle_id }}&alert_type={{ filters.alert_type }}" class="btn btn-secondary">Tiếp →</a>
+        {% endif %}
+    </div>
+    {% endif %}
+</section>
+{% endblock %}

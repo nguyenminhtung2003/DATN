@@ -1,0 +1,8 @@
+__pycache__/
+**/__pycache__/
+.pytest_cache/
+logs/*.log
+storage/local_events.db
+storage/runtime/latest.jpg
+storage/runtime/status.json
+storage/_test_*/

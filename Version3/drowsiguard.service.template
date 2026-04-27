@@ -1,0 +1,24 @@
+[Unit]
+Description=DrowsiGuard - Drowsiness Warning System
+After=network-online.target graphical.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=@SERVICE_USER@
+WorkingDirectory=@APP_DIR@
+ExecStart=/usr/bin/python3 @APP_DIR@/main.py
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+Environment=DISPLAY=:0
+Environment=DROWSIGUARD_DEVICE_ID=JETSON-001
+Environment=DROWSIGUARD_LOG_LEVEL=INFO
+Environment=DROWSIGUARD_DEMO_MODE=false
+Environment=DROWSIGUARD_APP_VERSION=Version3
+Environment=DROWSIGUARD_RUNTIME_DIR=@APP_DIR@/storage/runtime
+EnvironmentFile=-@APP_DIR@/drowsiguard.env
+
+[Install]
+WantedBy=multi-user.target

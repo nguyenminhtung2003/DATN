@@ -1,0 +1,7 @@
+{% for item in hardware_badges %}
+<div class="hw-badge {{ 'hw-ok' if item.ok else 'hw-error' }}" data-hw-key="{{ item.key }}">
+    <span class="hw-icon">{{ item.icon }}</span>
+    <span class="hw-label">{{ item.label }}</span>
+    <span class="hw-status">{{ '✅' if item.ok else '❌' }}</span>
+</div>
+{% endfor %}
