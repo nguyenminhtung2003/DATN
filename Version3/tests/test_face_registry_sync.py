@@ -72,6 +72,8 @@ class FaceRegistrySyncTest(unittest.TestCase):
             manifest = json.load(fh)
         self.assertEqual(manifest["drivers"][0]["rfid_tag"], "UID-001")
         self.assertEqual(manifest["drivers"][0]["name"], "Driver Demo")
+        self.assertEqual(manifest["drivers"][0]["reference_source"], "jetson_ir")
+        self.assertEqual(manifest["drivers"][0]["reference_role"], "primary")
 
     def test_verify_matches_same_reference_image(self):
         probe = self._make_face()

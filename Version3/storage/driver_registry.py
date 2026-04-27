@@ -54,7 +54,14 @@ class DriverRegistry:
         with open(self.registry_path, "w", encoding="utf-8") as fh:
             json.dump(normalized, fh, indent=2, ensure_ascii=False)
 
-    def upsert_local_driver(self, rfid_uid: str, driver_name: str = None, source_url: str = None):
+    def upsert_local_driver(
+        self,
+        rfid_uid: str,
+        driver_name: str = None,
+        source_url: str = None,
+        reference_source: str = "jetson_ir",
+        reference_role: str = "primary",
+    ):
         manifest = self.load_manifest()
         drivers = [driver for driver in manifest.get("drivers", []) if driver.get("rfid_tag") != rfid_uid]
         drivers.append({
@@ -62,6 +69,8 @@ class DriverRegistry:
             "rfid_tag": rfid_uid,
             "face_image_url": source_url,
             "local_reference_path": self.reference_path(rfid_uid),
+            "reference_source": reference_source or "jetson_ir",
+            "reference_role": reference_role or "primary",
         })
         manifest["generated_at"] = self._now_iso()
         manifest["drivers"] = drivers
@@ -97,11 +106,15 @@ class DriverRegistry:
             desired_rfids.add(rfid_uid)
             payload = self._download_bytes(face_url)
             self.save_reference_bytes(rfid_uid, payload)
+            reference_source = driver.get("reference_source") or "webquanli_sync"
+            reference_role = driver.get("reference_role") or "fallback"
             normalized_drivers.append({
                 "name": driver.get("name") or rfid_uid,
                 "rfid_tag": rfid_uid,
                 "face_image_url": face_url,
                 "local_reference_path": self.reference_path(rfid_uid),
+                "reference_source": reference_source,
+                "reference_role": reference_role,
             })
 
         self._remove_stale_entries(desired_rfids)

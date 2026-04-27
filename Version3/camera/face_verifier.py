@@ -19,6 +19,7 @@ CV2_READY = cv2 is not None and "unittest.mock" not in type(cv2).__module__
 NP_READY = np is not None and "unittest.mock" not in type(np).__module__
 
 import config
+from camera.face_enrollment import FaceEnrollmentService
 from storage.driver_registry import DriverRegistry
 from utils.logger import get_logger
 
@@ -39,6 +40,11 @@ class FaceVerifier:
         self.registry = DriverRegistry()
         self.data_dir = self.registry.data_dir
         self.method = getattr(config, "FACE_VERIFY_METHOD", "auto")
+        self.enrollment = FaceEnrollmentService(
+            self.registry,
+            save_image=self._save_image,
+            is_empty_image=self._is_empty_image,
+        )
         logger.info(
             "FaceVerifier initialized. "
             f"data_dir={self.data_dir} method={self.method} cv2={'yes' if CV2_READY else 'no'}"
@@ -91,18 +97,7 @@ class FaceVerifier:
 
     def enroll_driver(self, rfid_uid: str, face_frame, driver_name: str = None):
         """Enroll a driver's face for future verification."""
-        if self._is_empty_image(face_frame):
-            logger.error("Empty frame passed to enrollment")
-            return False
-
-        saved = self._save_image(self.registry.reference_path(rfid_uid), face_frame)
-        if not saved:
-            logger.error(f"Failed to save enrollment image for UID={rfid_uid}")
-            return False
-
-        self.registry.upsert_local_driver(rfid_uid, driver_name=driver_name)
-        logger.info(f"Enrollment success for UID={rfid_uid}")
-        return True
+        return self.enrollment.enroll_driver(rfid_uid, face_frame, driver_name=driver_name)
 
     def enroll_driver_from_file(self, rfid_uid: str, image_path: str, driver_name: str = None):
         if not os.path.exists(image_path):
