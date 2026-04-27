@@ -47,6 +47,7 @@ from sensors.system_status import read_network_status, read_system_status
 from audio.bluetooth_manager import BluetoothManager
 from ai.drowsiness_classifier import DrowsinessClassifier, AIState
 from ai.calibration import CalibrationProfile, DriverCalibrator
+from ai.session_controller import AiSessionController
 from ai.threshold_policy import ThresholdPolicy
 from ui.local_monitor import LocalMonitorGUI, LocalMonitorState
 
@@ -195,8 +196,13 @@ class DrowsiGuard:
         self.face_analyzer = FaceAnalyzer() if config.FEATURES["drowsiness"] else None
         self.ai_classifier = DrowsinessClassifier() if config.AI_CLASSIFIER_ENABLED else None
         self.calibrator = DriverCalibrator()
-        self._calibration_profile = CalibrationProfile.fallback(reason="NOT_STARTED")
-        self._calibration_applied = False
+        self.ai_session = AiSessionController(
+            classifier=self.ai_classifier,
+            calibrator=self.calibrator,
+            create_classifier=False,
+        )
+        self._calibration_profile = self.ai_session.profile
+        self._calibration_applied = self.ai_session.calibration_applied
 
         # Alert hardware (scaffold — blocked)
         self.buzzer = Buzzer() if config.FEATURES["buzzer"] else None
@@ -378,21 +384,9 @@ class DrowsiGuard:
                 metrics = self.face_analyzer.analyze(frame)
                 perclos = self.face_analyzer.perclos
                 self._last_metrics = metrics
-                self._update_calibration_from_metrics(metrics)
-                if self.ai_classifier:
-                    self._last_ai_result = self.ai_classifier.update({
-                        "face_present": metrics.face_present,
-                        "ear": metrics.ear,
-                        "left_ear": getattr(metrics, "left_ear", metrics.ear),
-                        "right_ear": getattr(metrics, "right_ear", metrics.ear),
-                        "ear_used": getattr(metrics, "ear_used", metrics.ear),
-                        "mar": metrics.mar,
-                        "pitch": metrics.pitch,
-                        "perclos": perclos,
-                        "face_bbox": metrics.face_bbox,
-                        "face_quality": getattr(metrics, "face_quality", {}),
-                        "eye_quality": getattr(metrics, "eye_quality", {}),
-                    })
+                if self.ai_session:
+                    self._last_ai_result = self.ai_session.update(metrics, perclos)
+                    self._sync_ai_session_state()
 
                 # Update good face frame for verifier
                 if metrics.face_present and metrics.face_bbox:
@@ -541,16 +535,9 @@ class DrowsiGuard:
         })
 
     def _reset_ai_session_state(self):
-        self.calibrator = DriverCalibrator()
-        self._calibration_profile = CalibrationProfile.fallback(reason="COLLECTING")
-        self._calibration_applied = False
-        if self.ai_classifier and hasattr(self.ai_classifier, "reset_state"):
-            self.ai_classifier.reset_state()
-        if self.ai_classifier and hasattr(self.ai_classifier, "set_profile"):
-            self.ai_classifier.set_profile(self._calibration_profile)
-        if self.alert_manager and hasattr(self.alert_manager, "reset"):
-            self.alert_manager.reset()
-        self._last_ai_result = {
+        if self.ai_session:
+            self.ai_session.classifier = self.ai_classifier
+        self._last_ai_result = self.ai_session.reset_session() if self.ai_session else {
             "state": AIState.UNKNOWN,
             "confidence": 0.0,
             "reason": "Calibration collecting",
@@ -558,51 +545,50 @@ class DrowsiGuard:
             "thresholds": self._ai_thresholds_payload(),
             "features": {},
         }
+        self._sync_ai_session_state()
+        if self.alert_manager and hasattr(self.alert_manager, "reset"):
+            self.alert_manager.reset()
 
     def _update_calibration_from_metrics(self, metrics):
-        if not self.calibrator:
+        if not self.ai_session:
             return
-        now = time.time()
-        if self._calibration_applied:
-            return
-        if metrics is not None:
-            self.calibrator.add(metrics, now)
-        profile = self.calibrator.profile
-        if profile.valid or self.calibrator.complete(now):
-            self._calibration_profile = profile
-            self._calibration_applied = True
-            if self.ai_classifier and hasattr(self.ai_classifier, "set_profile"):
-                self.ai_classifier.set_profile(profile)
-            if self.alert_manager and profile.valid and hasattr(self.alert_manager, "set_calibrated_thresholds"):
-                self.alert_manager.set_calibrated_thresholds(
-                    profile.ear_open_median,
-                    profile.pitch_neutral,
-                    profile=profile,
-                )
-            logger.info(
-                "Calibration applied: valid=%s reason=%s samples=%s EAR=%.3f MAR=%.3f pitch_down=%.1f",
-                profile.valid,
-                profile.reason,
-                profile.sample_count,
-                profile.ear_closed_threshold,
-                profile.mar_yawn_threshold,
-                profile.pitch_down_threshold,
-            )
+        self.ai_session.update_calibration_from_metrics(metrics)
+        self._sync_ai_session_state()
 
     def _ai_thresholds_payload(self):
-        profile = self._calibration_profile or CalibrationProfile.fallback(reason="FALLBACK")
-        return ThresholdPolicy.from_profile(profile).to_dict()
+        if self.ai_session:
+            return self.ai_session.thresholds_payload()
+        return ThresholdPolicy.from_profile(self._calibration_profile).to_dict()
 
     def _calibration_payload(self):
-        if self.calibrator and not self._calibration_applied:
-            profile = self.calibrator.profile
-            active = bool(self._session_active)
-            payload = profile.to_dict(active=active)
-            if active and payload["reason"] == "NOT_ENOUGH_SAMPLES":
-                payload["reason"] = "COLLECTING"
-            return payload
-        profile = self._calibration_profile or CalibrationProfile.fallback(reason="NOT_STARTED")
-        return profile.to_dict(active=False)
+        if self.ai_session:
+            return self.ai_session.calibration_payload(session_active=bool(self._session_active))
+        return (self._calibration_profile or CalibrationProfile.fallback(reason="NOT_STARTED")).to_dict(active=False)
+
+    def _sync_ai_session_state(self):
+        if not self.ai_session:
+            return
+        self.calibrator = self.ai_session.calibrator
+        self._calibration_profile = self.ai_session.profile
+        self._calibration_applied = self.ai_session.calibration_applied
+        profile = self.ai_session.consume_applied_profile()
+        if not profile:
+            return
+        if self.alert_manager and profile.valid and hasattr(self.alert_manager, "set_calibrated_thresholds"):
+            self.alert_manager.set_calibrated_thresholds(
+                profile.ear_open_median,
+                profile.pitch_neutral,
+                profile=profile,
+            )
+        logger.info(
+            "Calibration applied: valid=%s reason=%s samples=%s EAR=%.3f MAR=%.3f pitch_down=%.1f",
+            profile.valid,
+            profile.reason,
+            profile.sample_count,
+            profile.ear_closed_threshold,
+            profile.mar_yawn_threshold,
+            profile.pitch_down_threshold,
+        )
 
     def _camera_runtime_payload(self, include_snapshot=False):
         frame_age = self._camera_frame_age()
