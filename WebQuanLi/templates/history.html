@@ -1,96 +1,174 @@
 {% extends "base.html" %}
-{% block title %}Lịch Sử{% endblock %}
+{% block title %}Lich Su{% endblock %}
 
 {% block content %}
 <div class="dashboard-header">
-    <h1>📋 Lịch Sử Cảnh Báo & Ca Làm Việc</h1>
+    <h1>Lich su canh bao va ca lam viec</h1>
 </div>
 
-<!-- Filter Form -->
 <section class="panel">
-    <h2 class="panel-title">🔍 Bộ lọc</h2>
+    <h2 class="panel-title">Bo loc</h2>
     <form method="GET" action="/history" class="filter-form" id="history-filter">
         <div class="filter-grid">
             <div class="form-group">
-                <label for="date_from">Từ ngày</label>
+                <label for="q">Tim kiem</label>
+                <input type="search" id="q" name="q" value="{{ filters.q }}" placeholder="Tai xe, xe, noi dung canh bao">
+            </div>
+            <div class="form-group">
+                <label for="date_from">Tu ngay</label>
                 <input type="date" id="date_from" name="date_from" value="{{ filters.date_from }}">
             </div>
             <div class="form-group">
-                <label for="date_to">Đến ngày</label>
+                <label for="date_to">Den ngay</label>
                 <input type="date" id="date_to" name="date_to" value="{{ filters.date_to }}">
             </div>
             <div class="form-group">
                 <label for="vehicle_id">Xe</label>
                 <select id="vehicle_id" name="vehicle_id">
-                    <option value="">Tất cả</option>
+                    <option value="">Tat ca</option>
                     {% for v in vehicles %}
                     <option value="{{ v.id }}" {% if filters.vehicle_id|string == v.id|string %}selected{% endif %}>
-                        {{ v.plate_number }} — {{ v.name }}
+                        {{ v.plate_number }} - {{ v.name }}
                     </option>
                     {% endfor %}
                 </select>
             </div>
             <div class="form-group">
-                <label for="alert_type">Loại cảnh báo</label>
+                <label for="alert_type">Loai canh bao</label>
                 <select id="alert_type" name="alert_type">
-                    <option value="">Tất cả</option>
-                    <option value="DROWSINESS" {% if filters.alert_type == 'DROWSINESS' %}selected{% endif %}>Buồn ngủ</option>
-                    <option value="FACE_MISMATCH" {% if filters.alert_type == 'FACE_MISMATCH' %}selected{% endif %}>Sai khuôn mặt</option>
+                    <option value="">Tat ca</option>
+                    <option value="DROWSINESS" {% if filters.alert_type == 'DROWSINESS' %}selected{% endif %}>Buon ngu</option>
+                    <option value="FACE_MISMATCH" {% if filters.alert_type == 'FACE_MISMATCH' %}selected{% endif %}>Sai khuon mat</option>
                     <option value="TEST" {% if filters.alert_type == 'TEST' %}selected{% endif %}>Test</option>
                 </select>
             </div>
             <div class="form-group form-group-btn">
-                <button type="submit" class="btn btn-primary" id="btn-filter">🔍 Lọc</button>
-                <a href="/history" class="btn btn-secondary" id="btn-reset">🔄 Reset</a>
+                <button type="submit" class="btn btn-primary" id="btn-filter">Loc</button>
+                <a href="/history" class="btn btn-secondary" id="btn-reset">Reset</a>
             </div>
         </div>
     </form>
 </section>
 
-<!-- Results -->
 <section class="panel">
-    <h2 class="panel-title">📄 Kết quả <span class="badge badge-count">{{ total }}</span></h2>
+    <div class="history-header-row">
+        <div>
+            <h2 class="panel-title">Nhat ky canh bao <span class="badge badge-count">{{ alert_history.total }}</span></h2>
+            <p class="history-note">Mac dinh hien thi toi da 100 canh bao moi nhat trong 7 ngay. Dung bo loc/tim kiem de tim canh bao cu hon trong khoang 7 ngay.</p>
+        </div>
+        {% if user.role == 'admin' %}
+        <form method="POST" action="/history/alerts/delete" class="history-delete-form">
+            <input type="hidden" name="date_from" value="{{ filters.date_from }}">
+            <input type="hidden" name="date_to" value="{{ filters.date_to }}">
+            <input type="hidden" name="vehicle_id" value="{{ filters.vehicle_id }}">
+            <input type="hidden" name="alert_type" value="{{ filters.alert_type }}">
+            <input type="hidden" name="q" value="{{ filters.q }}">
+            <button type="submit" class="btn btn-danger" onclick="return confirm('Xoa lich su canh bao dang loc? Ca lam viec se duoc giu lai.');">
+                Xoa lich su canh bao
+            </button>
+        </form>
+        {% endif %}
+    </div>
+
+    {% if deleted %}
+    <div class="alert-success">Da xoa {{ deleted }} canh bao.</div>
+    {% endif %}
+
     <div class="table-responsive">
         <table class="data-table">
             <thead>
                 <tr>
                     <th>#</th>
-                    <th>Thời gian</th>
-                    <th>Loại</th>
-                    <th>Mức độ</th>
+                    <th>Thoi gian</th>
+                    <th>Xe</th>
+                    <th>Tai xe</th>
+                    <th>Loai</th>
+                    <th>Muc do</th>
                     <th>EAR</th>
                     <th>MAR</th>
-                    <th>Chi tiết</th>
+                    <th>Chi tiet</th>
                 </tr>
             </thead>
             <tbody>
-                {% for alert in alerts %}
-                <tr class="{% if alert.alert_type and alert.alert_type.value == 'FACE_MISMATCH' %}alert-mismatch{% endif %}">
+                {% for alert in alert_history["items"] %}
+                <tr class="{% if alert.is_face_mismatch %}alert-mismatch{% endif %}">
                     <td>{{ alert.id }}</td>
-                    <td>{{ alert.timestamp.strftime('%H:%M:%S — %d/%m/%Y') if alert.timestamp else 'N/A' }}</td>
-                    <td><span class="badge {% if alert.alert_type and alert.alert_type.value == 'FACE_MISMATCH' %}badge-danger{% else %}badge-type{% endif %}">{{ alert.alert_type.value if alert.alert_type else 'N/A' }}</span></td>
-                    <td><span class="badge badge-level-{{ alert.alert_level.value if alert.alert_level else 'LEVEL_1' }}">{{ alert.alert_level.value if alert.alert_level else 'N/A' }}</span></td>
-                    <td>{{ '%.2f'|format(alert.ear_value) if alert.ear_value else '—' }}</td>
-                    <td>{{ '%.2f'|format(alert.mar_value) if alert.mar_value else '—' }}</td>
-                    <td>{{ alert.message or '—' }}</td>
+                    <td>{{ alert.display_time }}</td>
+                    <td>{{ alert.vehicle_label }}</td>
+                    <td>{{ alert.driver_name }}</td>
+                    <td><span class="badge {% if alert.is_face_mismatch %}badge-danger{% else %}badge-type{% endif %}">{{ alert.alert_type }}</span></td>
+                    <td><span class="badge badge-level-{{ alert.alert_level }}">{{ alert.alert_level }}</span></td>
+                    <td>{{ alert.ear_text }}</td>
+                    <td>{{ alert.mar_text }}</td>
+                    <td>{{ alert.message }}</td>
                 </tr>
                 {% endfor %}
-                {% if not alerts %}
-                <tr><td colspan="7" class="text-center text-muted">Không có dữ liệu</td></tr>
+                {% if not alert_history["items"] %}
+                <tr><td colspan="9" class="text-center text-muted">Khong co du lieu</td></tr>
                 {% endif %}
             </tbody>
         </table>
     </div>
 
-    <!-- Pagination -->
-    {% if total > per_page %}
+    {% if alert_history.total > alert_history.per_page %}
     <div class="pagination">
-        {% if page > 1 %}
-        <a href="/history?page={{ page - 1 }}&date_from={{ filters.date_from }}&date_to={{ filters.date_to }}&vehicle_id={{ filters.vehicle_id }}&alert_type={{ filters.alert_type }}" class="btn btn-secondary">← Trước</a>
+        {% if alert_prev_url %}
+        <a href="{{ alert_prev_url }}" class="btn btn-secondary">Truoc</a>
         {% endif %}
-        <span class="page-info">Trang {{ page }} / {{ ((total - 1) // per_page) + 1 }}</span>
-        {% if page * per_page < total %}
-        <a href="/history?page={{ page + 1 }}&date_from={{ filters.date_from }}&date_to={{ filters.date_to }}&vehicle_id={{ filters.vehicle_id }}&alert_type={{ filters.alert_type }}" class="btn btn-secondary">Tiếp →</a>
+        <span class="page-info">Trang {{ alert_history.page }} / {{ alert_total_pages }}</span>
+        {% if alert_next_url %}
+        <a href="{{ alert_next_url }}" class="btn btn-secondary">Tiep</a>
+        {% endif %}
+    </div>
+    {% endif %}
+</section>
+
+<section class="panel">
+    <h2 class="panel-title">Ca lam viec <span class="badge badge-count">{{ session_history.total }}</span></h2>
+    <div class="table-responsive">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Tai xe</th>
+                    <th>Xe</th>
+                    <th>Check-in</th>
+                    <th>Check-out</th>
+                    <th>Thoi luong</th>
+                    <th>Trang thai</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for session in session_history["items"] %}
+                <tr>
+                    <td>{{ session.id }}</td>
+                    <td>{{ session.driver_name }}</td>
+                    <td>{{ session.vehicle_label }}</td>
+                    <td>{{ session.checkin_display }}</td>
+                    <td>{{ session.checkout_display }}</td>
+                    <td>{{ session.duration_text }}</td>
+                    <td>
+                        <span class="badge {% if session.is_active %}badge-info{% else %}badge-type{% endif %}">
+                            {{ session.status_text }}
+                        </span>
+                    </td>
+                </tr>
+                {% endfor %}
+                {% if not session_history["items"] %}
+                <tr><td colspan="7" class="text-center text-muted">Khong co ca lam viec</td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if session_history.total > session_history.per_page %}
+    <div class="pagination">
+        {% if session_prev_url %}
+        <a href="{{ session_prev_url }}" class="btn btn-secondary">Truoc</a>
+        {% endif %}
+        <span class="page-info">Trang {{ session_history.page }} / {{ session_total_pages }}</span>
+        {% if session_next_url %}
+        <a href="{{ session_next_url }}" class="btn btn-secondary">Tiep</a>
         {% endif %}
     </div>
     {% endif %}

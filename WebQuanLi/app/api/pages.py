@@ -1,18 +1,48 @@
+from urllib.parse import urlencode
+
 from fastapi import APIRouter, Depends, Request, Query
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select, func, and_, desc
-from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timedelta, timezone
 
 from app.config import settings
 from app.database import get_db
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import check_admin, get_current_user
 from app.models import User, Vehicle, Driver, DriverSession, SystemAlert
+from app.services.history_service import (
+    delete_alert_history,
+    list_alert_history,
+    list_session_history,
+)
 
 router = APIRouter(tags=["pages"])
 templates = Jinja2Templates(directory=str(settings.TEMPLATES_DIR))
+
+
+def _clean_query_value(value):
+    if value is None:
+        return None
+    value = str(value).strip()
+    return value or None
+
+
+def _history_url(base_filters: dict, **updates) -> str:
+    params = dict(base_filters)
+    params.update(updates)
+    params = {
+        key: value
+        for key, value in params.items()
+        if value not in (None, "", 0)
+    }
+    return "/history" if not params else "/history?" + urlencode(params)
+
+
+def _total_pages(total: int, per_page: int) -> int:
+    if not total:
+        return 1
+    return ((total - 1) // per_page) + 1
 
 
 @router.get("/history", response_class=HTMLResponse)
@@ -20,66 +50,87 @@ async def history_page(
     request: Request,
     date_from: str = Query(None),
     date_to: str = Query(None),
-    vehicle_id: int = Query(None),
+    vehicle_id: str = Query(None),
     alert_type: str = Query(None),
-    page: int = Query(1, ge=1),
+    q: str = Query(None),
+    alert_page: int = Query(1, ge=1),
+    session_page: int = Query(1, ge=1),
+    deleted: int = Query(None),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     per_page = 25
-    query = (
-        select(SystemAlert)
-        .options(selectinload(SystemAlert.vehicle))
-        .order_by(SystemAlert.timestamp.desc())
+    filters = {
+        "date_from": _clean_query_value(date_from),
+        "date_to": _clean_query_value(date_to),
+        "vehicle_id": _clean_query_value(vehicle_id),
+        "alert_type": _clean_query_value(alert_type),
+        "q": _clean_query_value(q),
+    }
+    alert_history = await list_alert_history(
+        db,
+        date_from=filters["date_from"],
+        date_to=filters["date_to"],
+        vehicle_id=filters["vehicle_id"],
+        alert_type=filters["alert_type"],
+        q=filters["q"],
+        page=alert_page,
+        per_page=per_page,
     )
-    filters = []
-
-    if vehicle_id:
-        filters.append(SystemAlert.vehicle_id == vehicle_id)
-    if alert_type:
-        filters.append(SystemAlert.alert_type == alert_type)
-    if date_from:
-        try:
-            filters.append(SystemAlert.timestamp >= datetime.fromisoformat(date_from))
-        except ValueError:
-            pass
-    if date_to:
-        try:
-            filters.append(SystemAlert.timestamp <= datetime.fromisoformat(date_to))
-        except ValueError:
-            pass
-
-    if filters:
-        query = query.where(and_(*filters))
-
-    total_result = await db.execute(
-        select(func.count()).select_from(SystemAlert).where(and_(*filters)) if filters
-        else select(func.count()).select_from(SystemAlert)
+    session_history = await list_session_history(
+        db,
+        date_from=filters["date_from"],
+        date_to=filters["date_to"],
+        vehicle_id=filters["vehicle_id"],
+        q=filters["q"],
+        page=session_page,
+        per_page=per_page,
     )
-    total = total_result.scalar()
-
-    query = query.offset((page - 1) * per_page).limit(per_page)
-    result = await db.execute(query)
-    alerts = result.scalars().all()
 
     vehicles_result = await db.execute(select(Vehicle))
     vehicles = vehicles_result.scalars().all()
+    alert_total_pages = _total_pages(alert_history["total"], alert_history["per_page"])
+    session_total_pages = _total_pages(session_history["total"], session_history["per_page"])
 
     return templates.TemplateResponse(request=request, name="history.html", context={
         "request": request,
         "user": user,
-        "alerts": alerts,
         "vehicles": vehicles,
-        "total": total,
-        "page": page,
-        "per_page": per_page,
+        "alert_history": alert_history,
+        "session_history": session_history,
+        "alert_total_pages": alert_total_pages,
+        "session_total_pages": session_total_pages,
+        "deleted": deleted,
         "filters": {
-            "date_from": date_from or "",
-            "date_to": date_to or "",
-            "vehicle_id": vehicle_id or "",
-            "alert_type": alert_type or "",
+            "date_from": filters["date_from"] or "",
+            "date_to": filters["date_to"] or "",
+            "vehicle_id": filters["vehicle_id"] or "",
+            "alert_type": filters["alert_type"] or "",
+            "q": filters["q"] or "",
         },
+        "alert_prev_url": _history_url(filters, alert_page=alert_page - 1, session_page=session_page) if alert_page > 1 else "",
+        "alert_next_url": _history_url(filters, alert_page=alert_page + 1, session_page=session_page) if alert_page < alert_total_pages else "",
+        "session_prev_url": _history_url(filters, alert_page=alert_page, session_page=session_page - 1) if session_page > 1 else "",
+        "session_next_url": _history_url(filters, alert_page=alert_page, session_page=session_page + 1) if session_page < session_total_pages else "",
     })
+
+
+@router.post("/history/alerts/delete")
+async def delete_history_alerts(
+    request: Request,
+    user: User = Depends(check_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    form = await request.form()
+    filters = {
+        "date_from": _clean_query_value(form.get("date_from")),
+        "date_to": _clean_query_value(form.get("date_to")),
+        "vehicle_id": _clean_query_value(form.get("vehicle_id")),
+        "alert_type": _clean_query_value(form.get("alert_type")),
+        "q": _clean_query_value(form.get("q")),
+    }
+    deleted = await delete_alert_history(db, filters)
+    return RedirectResponse(_history_url(filters, deleted=deleted), status_code=303)
 
 
 @router.get("/fleet", response_class=HTMLResponse)
