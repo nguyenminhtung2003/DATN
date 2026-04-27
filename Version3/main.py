@@ -47,6 +47,7 @@ from sensors.system_status import read_network_status, read_system_status
 from audio.bluetooth_manager import BluetoothManager
 from ai.drowsiness_classifier import DrowsinessClassifier, AIState
 from ai.calibration import CalibrationProfile, DriverCalibrator
+from ai.threshold_policy import ThresholdPolicy
 from ui.local_monitor import LocalMonitorGUI, LocalMonitorState
 
 # ─── Setup ──────────────────────────────────────────────────
@@ -573,7 +574,11 @@ class DrowsiGuard:
             if self.ai_classifier and hasattr(self.ai_classifier, "set_profile"):
                 self.ai_classifier.set_profile(profile)
             if self.alert_manager and profile.valid and hasattr(self.alert_manager, "set_calibrated_thresholds"):
-                self.alert_manager.set_calibrated_thresholds(profile.ear_open_median, profile.pitch_neutral)
+                self.alert_manager.set_calibrated_thresholds(
+                    profile.ear_open_median,
+                    profile.pitch_neutral,
+                    profile=profile,
+                )
             logger.info(
                 "Calibration applied: valid=%s reason=%s samples=%s EAR=%.3f MAR=%.3f pitch_down=%.1f",
                 profile.valid,
@@ -586,11 +591,7 @@ class DrowsiGuard:
 
     def _ai_thresholds_payload(self):
         profile = self._calibration_profile or CalibrationProfile.fallback(reason="FALLBACK")
-        return {
-            "ear_closed": float(profile.ear_closed_threshold),
-            "mar_yawn": float(profile.mar_yawn_threshold),
-            "pitch_down": float(profile.pitch_down_threshold),
-        }
+        return ThresholdPolicy.from_profile(profile).to_dict()
 
     def _calibration_payload(self):
         if self.calibrator and not self._calibration_applied:

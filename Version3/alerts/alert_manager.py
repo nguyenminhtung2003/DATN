@@ -8,6 +8,7 @@ from collections import deque
 
 from utils.logger import get_logger
 import config
+from ai.threshold_policy import ThresholdPolicy
 
 logger = get_logger("alerts.alert_manager")
 
@@ -94,11 +95,18 @@ class AlertManager:
             return AlertLevel.LEVEL_2
         return AlertLevel.LEVEL_3
 
-    def set_calibrated_thresholds(self, ear_baseline: float, pitch_neutral: float):
+    def set_calibrated_thresholds(self, ear_baseline: float, pitch_neutral: float, profile=None):
         """Apply calibrated thresholds from session start."""
-        self._ear_threshold = min(config.EAR_THRESHOLD, 0.75 * ear_baseline)
-        self._pitch_threshold = config.PITCH_DELTA_THRESHOLD
-        logger.info(f"Calibrated thresholds: EAR={self._ear_threshold:.3f}, pitch_neutral={pitch_neutral:.1f}")
+        if profile is not None:
+            thresholds = ThresholdPolicy.from_profile(profile).to_dict()
+            self._ear_threshold = thresholds["ear_closed"]
+            self._pitch_threshold = thresholds["pitch_down"]
+        else:
+            self._ear_threshold = min(config.EAR_THRESHOLD, 0.75 * ear_baseline)
+            self._pitch_threshold = config.PITCH_DELTA_THRESHOLD
+        logger.info(
+            f"Calibrated thresholds: EAR={self._ear_threshold:.3f}, pitch_neutral={pitch_neutral:.1f}"
+        )
 
     def update(self, metrics, perclos: float, ai_result=None):
         """Process metrics and determine alert level.

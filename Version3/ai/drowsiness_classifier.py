@@ -9,6 +9,7 @@ from collections import deque
 import config
 from .calibration import CalibrationProfile
 from .feature_extractor import FeatureExtractor
+from .threshold_policy import ThresholdPolicy
 from utils.logger import get_logger
 
 logger = get_logger("ai.classifier")
@@ -212,11 +213,7 @@ class DrowsinessClassifier:
 
     def _thresholds(self):
         profile = self._profile or CalibrationProfile.fallback(reason="FALLBACK")
-        return {
-            "ear_closed": float(profile.ear_closed_threshold),
-            "mar_yawn": float(profile.mar_yawn_threshold),
-            "pitch_down": float(profile.pitch_down_threshold),
-        }
+        return ThresholdPolicy.from_profile(profile).to_dict()
 
     def _durations(self):
         return {
