@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
-from datetime import datetime
 
 from app.database import get_db
 from app.auth.dependencies import get_current_user
-from app.models import User, SystemAlert, AlertType
+from app.models import User, SystemAlert
+from app.services.time_service import local_date_to_utc_bounds
 
 router = APIRouter(prefix="/api", tags=["alerts"])
 
@@ -28,18 +28,11 @@ async def list_alerts(
         filters.append(SystemAlert.vehicle_id == vehicle_id)
     if alert_type:
         filters.append(SystemAlert.alert_type == alert_type)
-    if date_from:
-        try:
-            dt_from = datetime.fromisoformat(date_from)
-            filters.append(SystemAlert.timestamp >= dt_from)
-        except ValueError:
-            pass
-    if date_to:
-        try:
-            dt_to = datetime.fromisoformat(date_to)
-            filters.append(SystemAlert.timestamp <= dt_to)
-        except ValueError:
-            pass
+    start_utc, end_utc = local_date_to_utc_bounds(date_from, date_to)
+    if start_utc:
+        filters.append(SystemAlert.timestamp >= start_utc)
+    if end_utc:
+        filters.append(SystemAlert.timestamp < end_utc)
 
     if filters:
         query = query.where(and_(*filters))
