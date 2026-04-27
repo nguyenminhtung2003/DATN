@@ -12,15 +12,44 @@ from alerts.alert_manager import AlertEvent, AlertLevel
 from main import DrowsiGuard
 from sensors.hardware_monitor import HardwareMonitor
 from state_machine import State
+from tests.fixtures.websocket_payloads import (
+    alert_payload,
+    hardware_payload,
+    verify_snapshot_payload,
+)
 
 
 def load_webquanli_schemas():
-    workspace_root = Path(__file__).resolve().parents[3]
-    schema_path = workspace_root / "CodeEnhance" / "WebQuanLi" / "app" / "schemas.py"
+    workspace_root = Path(__file__).resolve().parents[2]
+    schema_path = workspace_root / "WebQuanLi" / "app" / "schemas.py"
     spec = importlib.util.spec_from_file_location("webquanli_contract_schemas", schema_path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def test_shared_alert_fixture_matches_webquanli_schema():
+    schemas = load_webquanli_schemas()
+
+    parsed = schemas.AlertData(**alert_payload())
+
+    assert parsed.level == "DANGER"
+
+
+def test_shared_hardware_fixture_matches_webquanli_schema():
+    schemas = load_webquanli_schemas()
+
+    parsed = schemas.HardwareData(**hardware_payload())
+
+    assert parsed.camera_effective is True
+
+
+def test_shared_verify_snapshot_fixture_matches_webquanli_schema():
+    schemas = load_webquanli_schemas()
+
+    parsed = schemas.VerifySnapshotData(**verify_snapshot_payload())
+
+    assert parsed.status == "VERIFIED"
 
 
 class ImmediateThread:
