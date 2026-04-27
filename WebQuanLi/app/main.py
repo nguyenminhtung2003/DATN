@@ -5,7 +5,8 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from app.config import settings, setup_cool_logging
-from app.database import init_db
+from app.database import async_session_factory, init_db
+from app.services.history_service import purge_old_alerts
 
 setup_cool_logging()
 logger = logging.getLogger(__name__)
@@ -16,6 +17,10 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 Starting WebQuanLi — Drowsiness Warning System")
     await init_db()
     logger.info("✅ Database initialized")
+    async with async_session_factory() as db:
+        deleted_alerts = await purge_old_alerts(db)
+    if deleted_alerts:
+        logger.info("Purged %s old alert history rows", deleted_alerts)
     yield
     logger.info("🛑 Shutting down")
 
