@@ -1,31 +1,31 @@
 {% extends "base.html" %}
-{% block title %}Lich Su{% endblock %}
+{% block title %}Lịch Sử{% endblock %}
 
 {% block content %}
 <div class="dashboard-header">
-    <h1>Lich su canh bao va ca lam viec</h1>
+    <h1>Lịch sử cảnh báo và ca làm việc</h1>
 </div>
 
 <section class="panel">
-    <h2 class="panel-title">Bo loc</h2>
+    <h2 class="panel-title">Bộ lọc</h2>
     <form method="GET" action="/history" class="filter-form" id="history-filter">
         <div class="filter-grid">
             <div class="form-group">
-                <label for="q">Tim kiem</label>
-                <input type="search" id="q" name="q" value="{{ filters.q }}" placeholder="Tai xe, xe, noi dung canh bao">
+                <label for="q">Tìm kiếm</label>
+                <input type="search" id="q" name="q" value="{{ filters.q }}" placeholder="Tài xế, xe, nội dung cảnh báo">
             </div>
             <div class="form-group">
-                <label for="date_from">Tu ngay</label>
+                <label for="date_from">Từ ngày</label>
                 <input type="date" id="date_from" name="date_from" value="{{ filters.date_from }}">
             </div>
             <div class="form-group">
-                <label for="date_to">Den ngay</label>
+                <label for="date_to">Đến ngày</label>
                 <input type="date" id="date_to" name="date_to" value="{{ filters.date_to }}">
             </div>
             <div class="form-group">
                 <label for="vehicle_id">Xe</label>
                 <select id="vehicle_id" name="vehicle_id">
-                    <option value="">Tat ca</option>
+                    <option value="">Tất cả</option>
                     {% for v in vehicles %}
                     <option value="{{ v.id }}" {% if filters.vehicle_id|string == v.id|string %}selected{% endif %}>
                         {{ v.plate_number }} - {{ v.name }}
@@ -34,44 +34,49 @@
                 </select>
             </div>
             <div class="form-group">
-                <label for="alert_type">Loai canh bao</label>
+                <label for="alert_type">Loại cảnh báo</label>
                 <select id="alert_type" name="alert_type">
-                    <option value="">Tat ca</option>
-                    <option value="DROWSINESS" {% if filters.alert_type == 'DROWSINESS' %}selected{% endif %}>Buon ngu</option>
-                    <option value="FACE_MISMATCH" {% if filters.alert_type == 'FACE_MISMATCH' %}selected{% endif %}>Sai khuon mat</option>
+                    <option value="">Tất cả</option>
+                    <option value="DROWSINESS" {% if filters.alert_type == 'DROWSINESS' %}selected{% endif %}>Buồn ngủ</option>
+                    <option value="FACE_MISMATCH" {% if filters.alert_type == 'FACE_MISMATCH' %}selected{% endif %}>Sai khuôn mặt</option>
                     <option value="TEST" {% if filters.alert_type == 'TEST' %}selected{% endif %}>Test</option>
                 </select>
             </div>
             <div class="form-group form-group-btn">
-                <button type="submit" class="btn btn-primary" id="btn-filter">Loc</button>
-                <a href="/history" class="btn btn-secondary" id="btn-reset">Reset</a>
+                <button type="submit" class="btn btn-primary" id="btn-filter">Lọc</button>
+                <a href="/history" class="btn btn-secondary" id="btn-reset">Đặt lại</a>
+                {% if user.role == 'admin' %}
+                <button type="submit"
+                        form="history-delete-form-post"
+                        class="btn btn-danger"
+                        id="btn-delete-history"
+                        onclick="return confirm('Xóa lịch sử cảnh báo đang lọc? Ca làm việc sẽ được giữ lại.');">
+                    Xóa lịch sử cảnh báo
+                </button>
+                {% endif %}
             </div>
         </div>
     </form>
+    {% if user.role == 'admin' %}
+    <form method="POST" action="/history/alerts/delete" id="history-delete-form-post" class="history-delete-form">
+        <input type="hidden" name="date_from" value="{{ filters.date_from }}">
+        <input type="hidden" name="date_to" value="{{ filters.date_to }}">
+        <input type="hidden" name="vehicle_id" value="{{ filters.vehicle_id }}">
+        <input type="hidden" name="alert_type" value="{{ filters.alert_type }}">
+        <input type="hidden" name="q" value="{{ filters.q }}">
+    </form>
+    {% endif %}
 </section>
 
 <section class="panel">
     <div class="history-header-row">
         <div>
-            <h2 class="panel-title">Nhat ky canh bao <span class="badge badge-count">{{ alert_history.total }}</span></h2>
-            <p class="history-note">Mac dinh hien thi toi da 100 canh bao moi nhat trong 7 ngay. Dung bo loc/tim kiem de tim canh bao cu hon trong khoang 7 ngay.</p>
+            <h2 class="panel-title">Nhật ký cảnh báo <span class="badge badge-count">{{ alert_history.total }}</span></h2>
         </div>
-        {% if user.role == 'admin' %}
-        <form method="POST" action="/history/alerts/delete" class="history-delete-form">
-            <input type="hidden" name="date_from" value="{{ filters.date_from }}">
-            <input type="hidden" name="date_to" value="{{ filters.date_to }}">
-            <input type="hidden" name="vehicle_id" value="{{ filters.vehicle_id }}">
-            <input type="hidden" name="alert_type" value="{{ filters.alert_type }}">
-            <input type="hidden" name="q" value="{{ filters.q }}">
-            <button type="submit" class="btn btn-danger" onclick="return confirm('Xoa lich su canh bao dang loc? Ca lam viec se duoc giu lai.');">
-                Xoa lich su canh bao
-            </button>
-        </form>
-        {% endif %}
     </div>
 
     {% if deleted %}
-    <div class="alert-success">Da xoa {{ deleted }} canh bao.</div>
+    <div class="alert-success">Đã xóa {{ deleted }} cảnh báo.</div>
     {% endif %}
 
     <div class="table-responsive">
@@ -79,14 +84,14 @@
             <thead>
                 <tr>
                     <th>#</th>
-                    <th>Thoi gian</th>
+                    <th>Thời gian</th>
                     <th>Xe</th>
-                    <th>Tai xe</th>
-                    <th>Loai</th>
-                    <th>Muc do</th>
+                    <th>Tài xế</th>
+                    <th>Loại</th>
+                    <th>Mức độ</th>
                     <th>EAR</th>
                     <th>MAR</th>
-                    <th>Chi tiet</th>
+                    <th>Chi tiết</th>
                 </tr>
             </thead>
             <tbody>
@@ -104,7 +109,7 @@
                 </tr>
                 {% endfor %}
                 {% if not alert_history["items"] %}
-                <tr><td colspan="9" class="text-center text-muted">Khong co du lieu</td></tr>
+                <tr><td colspan="9" class="text-center text-muted">Không có dữ liệu</td></tr>
                 {% endif %}
             </tbody>
         </table>
@@ -113,29 +118,29 @@
     {% if alert_history.total > alert_history.per_page %}
     <div class="pagination">
         {% if alert_prev_url %}
-        <a href="{{ alert_prev_url }}" class="btn btn-secondary">Truoc</a>
+        <a href="{{ alert_prev_url }}" class="btn btn-secondary">Trước</a>
         {% endif %}
         <span class="page-info">Trang {{ alert_history.page }} / {{ alert_total_pages }}</span>
         {% if alert_next_url %}
-        <a href="{{ alert_next_url }}" class="btn btn-secondary">Tiep</a>
+        <a href="{{ alert_next_url }}" class="btn btn-secondary">Tiếp</a>
         {% endif %}
     </div>
     {% endif %}
 </section>
 
 <section class="panel">
-    <h2 class="panel-title">Ca lam viec <span class="badge badge-count">{{ session_history.total }}</span></h2>
+    <h2 class="panel-title">Ca làm việc <span class="badge badge-count">{{ session_history.total }}</span></h2>
     <div class="table-responsive">
         <table class="data-table">
             <thead>
                 <tr>
                     <th>#</th>
-                    <th>Tai xe</th>
+                    <th>Tài xế</th>
                     <th>Xe</th>
                     <th>Check-in</th>
                     <th>Check-out</th>
-                    <th>Thoi luong</th>
-                    <th>Trang thai</th>
+                    <th>Thời lượng</th>
+                    <th>Trạng thái</th>
                 </tr>
             </thead>
             <tbody>
@@ -155,7 +160,7 @@
                 </tr>
                 {% endfor %}
                 {% if not session_history["items"] %}
-                <tr><td colspan="7" class="text-center text-muted">Khong co ca lam viec</td></tr>
+                <tr><td colspan="7" class="text-center text-muted">Không có ca làm việc</td></tr>
                 {% endif %}
             </tbody>
         </table>
@@ -164,11 +169,11 @@
     {% if session_history.total > session_history.per_page %}
     <div class="pagination">
         {% if session_prev_url %}
-        <a href="{{ session_prev_url }}" class="btn btn-secondary">Truoc</a>
+        <a href="{{ session_prev_url }}" class="btn btn-secondary">Trước</a>
         {% endif %}
         <span class="page-info">Trang {{ session_history.page }} / {{ session_total_pages }}</span>
         {% if session_next_url %}
-        <a href="{{ session_next_url }}" class="btn btn-secondary">Tiep</a>
+        <a href="{{ session_next_url }}" class="btn btn-secondary">Tiếp</a>
         {% endif %}
     </div>
     {% endif %}

@@ -269,10 +269,10 @@ def _session_item(session, vehicle, driver, now_utc=None):
         "driver_name": driver.name if driver else "N/A",
         "vehicle_label": _vehicle_label(vehicle),
         "checkin_display": format_vn_datetime(session.checkin_at),
-        "checkout_display": format_vn_datetime(session.checkout_at, empty="Dang chay"),
+        "checkout_display": format_vn_datetime(session.checkout_at, empty="Đang chạy"),
         "duration_text": _duration_text(session.checkin_at, session.checkout_at or _utc_naive(now_utc)),
         "is_active": session.checkout_at is None,
-        "status_text": "Dang chay" if session.checkout_at is None else "Da ket thuc",
+        "status_text": "Đang chạy" if session.checkout_at is None else "Đã kết thúc",
     }
 
 

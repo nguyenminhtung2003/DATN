@@ -76,13 +76,18 @@ class HistoryPageTest(unittest.TestCase):
         html = response.text
         self.assertIn("00:00:00 - 28/04/2026", html)
         self.assertIn('name="q"', html)
-        self.assertIn("Ca lam viec", html)
+        self.assertIn("Ca làm việc", html)
         self.assertIn("Nguyen Van A", html)
         self.assertIn("23:00:00 - 27/04/2026", html)
         self.assertIn("/history/alerts/delete", html)
-        self.assertIn("toi da 100", html)
-        self.assertIn("7 ngay", html)
+        self.assertNotIn("Mặc định hiển thị tối đa 100 cảnh báo mới nhất trong 7 ngày", html)
+        self.assertNotIn("Mac dinh hien thi toi da 100 canh bao moi nhat trong 7 ngay", html)
         self.assertIn("return confirm", html)
+        self.assertIn("Lịch sử cảnh báo và ca làm việc", html)
+        self.assertIn("Bộ lọc", html)
+        self.assertIn("Nhật ký cảnh báo", html)
+        filter_form = html.split('id="history-filter"', 1)[1].split("</form>", 1)[0]
+        self.assertLess(filter_form.index('id="btn-reset"'), filter_form.index('id="btn-delete-history"'))
 
     def test_history_pagination_preserves_filters_and_uses_alert_page(self):
         response = asyncio.run(self._request("GET", "/history?q=alert&date_from=2026-04-27&alert_page=1"))

@@ -913,6 +913,10 @@ a:hover {
     justify-content: flex-end;
 }
 
+#history-delete-form-post {
+    display: none;
+}
+
 /* ══════════════════════════════════════════════
    ADMIN PANEL
    ══════════════════════════════════════════════ */
