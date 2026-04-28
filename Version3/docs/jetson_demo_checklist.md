@@ -130,3 +130,40 @@ Acceptable warnings before final hardware is connected:
 - `websocket_url` while `SERVER_IP` is still a placeholder
 
 For demo day, those three should be resolved.
+
+## 7. Driver Identity Voice Prompts
+
+Verification audio is local WAV playback. Keep these files on the Jetson:
+
+```text
+/home/nano/Version3/wav/verify_prepare_countdown.wav
+/home/nano/Version3/wav/verify_success.wav
+/home/nano/Version3/wav/verify_failed_identity.wav
+/home/nano/Version3/wav/verify_no_face.wav
+/home/nano/Version3/wav/verify_no_enrollment.wav
+```
+
+Smoke test each prompt from the local dashboard:
+
+```bash
+curl -X POST http://127.0.0.1:8080/api/audio/prompt/prepare_countdown
+curl -X POST http://127.0.0.1:8080/api/audio/prompt/success
+curl -X POST http://127.0.0.1:8080/api/audio/prompt/failed_identity
+curl -X POST http://127.0.0.1:8080/api/audio/prompt/no_face
+curl -X POST http://127.0.0.1:8080/api/audio/prompt/no_enrollment
+```
+
+Expected identity verification flow:
+
+- RFID scanned: speaker plays the countdown prompt before face capture.
+- Correct driver: speaker plays the success prompt and the session starts.
+- Wrong face for RFID: speaker plays the failed identity prompt, queues a face mismatch event, then returns to idle.
+- No usable face: speaker plays the no-face prompt, queues `verify_error`, then returns to idle.
+- No IR enrollment/reference for the RFID: speaker plays the no-enrollment prompt, queues `verify_error`, then returns to idle.
+
+If no audio plays, check the dashboard Audio section first, then run:
+
+```bash
+python3 healthcheck.py --quick
+bluetoothctl devices Connected
+```
