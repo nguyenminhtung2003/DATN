@@ -268,3 +268,68 @@ def test_speaker_uses_configured_audio_file_and_backend(monkeypatch):
     finally:
         if os.path.exists(audio_file):
             os.remove(audio_file)
+
+
+def test_speaker_plays_named_verify_prompt(monkeypatch, tmp_path):
+    calls = []
+    prompt_file = tmp_path / "verify_success.wav"
+    prompt_file.write_bytes(b"RIFFdemo")
+
+    def fake_popen(args):
+        calls.append(args)
+
+        class Process:
+            def poll(self):
+                return None
+
+            def terminate(self):
+                calls.append(["terminate"])
+
+        return Process()
+
+    speaker = Speaker(
+        enabled=True,
+        backend="paplay",
+        alert_files={},
+        prompt_files={"success": str(prompt_file)},
+        popen=fake_popen,
+    )
+
+    assert speaker.play_prompt("success") is True
+    speaker.stop()
+    assert calls[0] == ["paplay", str(prompt_file)]
+    assert calls[1] == ["terminate"]
+    assert speaker.last_prompt == "success"
+
+
+def test_speaker_waits_for_countdown_prompt_when_requested(monkeypatch, tmp_path):
+    calls = []
+    prompt_file = tmp_path / "verify_prepare_countdown.wav"
+    prompt_file.write_bytes(b"RIFFdemo")
+
+    class Process:
+        def poll(self):
+            return None
+
+        def wait(self, timeout=None):
+            calls.append(["wait", timeout])
+            return 0
+
+        def terminate(self):
+            calls.append(["terminate"])
+
+    def fake_popen(args):
+        calls.append(args)
+        return Process()
+
+    speaker = Speaker(
+        enabled=True,
+        backend="aplay",
+        alert_files={},
+        prompt_files={"prepare_countdown": str(prompt_file)},
+        popen=fake_popen,
+    )
+
+    assert speaker.play_prompt("prepare_countdown", wait=True, timeout=8.0) is True
+    assert calls[0] == ["aplay", str(prompt_file)]
+    assert calls[1] == ["wait", 8.0]
