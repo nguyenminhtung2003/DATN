@@ -256,3 +256,33 @@ def test_dashboard_service_restart_endpoint_is_disabled_by_default():
         assert "disabled" in response.json()["error"]
     finally:
         shutil.rmtree(str(runtime_dir.parent), ignore_errors=True)
+
+
+def test_dashboard_prompt_test_endpoint_uses_speaker_prompt():
+    runtime_dir = make_runtime_dir()
+
+    class SpeakerStub:
+        def __init__(self):
+            self.prompts = []
+
+        def play_prompt(self, prompt_name):
+            self.prompts.append(prompt_name)
+            return True
+
+        def status(self):
+            return {"enabled": True, "available": True}
+
+        def stop(self):
+            pass
+
+    speaker = SpeakerStub()
+
+    try:
+        client = TestClient(create_app(runtime_dir=runtime_dir, speaker=speaker))
+        response = client.post("/api/audio/prompt/success")
+
+        assert response.status_code == 200
+        assert response.json() == {"ok": True, "prompt": "success"}
+        assert speaker.prompts == ["success"]
+    finally:
+        shutil.rmtree(str(runtime_dir.parent), ignore_errors=True)

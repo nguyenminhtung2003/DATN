@@ -243,6 +243,16 @@ def run_healthcheck(quick: bool = False) -> int:
         "audio_files",
         "all alert audio files exist" if not missing_audio else "missing: " + ", ".join(missing_audio),
     )
+    verify_prompt_files = list(getattr(config, "VERIFY_PROMPT_FILES", {}).values())
+    missing_prompts = [path for path in verify_prompt_files if not _file_exists(path)]
+    _record(
+        results,
+        "PASS" if not missing_prompts else "WARN",
+        "verify_prompt_files",
+        "all verification prompt files exist"
+        if not missing_prompts
+        else "missing: " + ", ".join(missing_prompts),
+    )
     backend = getattr(config, "AUDIO_BACKEND", "auto")
     if backend == "auto":
         backend_ok = _command_available("paplay") or _command_available("aplay")

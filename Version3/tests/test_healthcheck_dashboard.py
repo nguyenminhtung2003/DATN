@@ -93,3 +93,41 @@ def test_run_healthcheck_reports_mediapipe_and_audio_backend(monkeypatch, capsys
     assert exit_code == 0
     assert "mediapipe_dependency" in output
     assert "audio_backend" in output
+
+
+def test_run_healthcheck_reports_verify_prompt_files(monkeypatch, capsys):
+    monkeypatch.setattr(healthcheck.config, "FEATURES", {
+        "camera": False,
+        "drowsiness": False,
+        "rfid": False,
+        "gps": False,
+        "buzzer": False,
+        "led": False,
+        "speaker": True,
+        "websocket": False,
+        "ota": False,
+        "face_verify": True,
+    })
+    monkeypatch.setattr(healthcheck.config, "WS_SERVER_URL", "ws://demo-host/ws")
+    monkeypatch.setattr(healthcheck.config, "BLUETOOTH_SPEAKER_MAC", "")
+    monkeypatch.setattr(healthcheck.config, "VERIFY_PROMPT_FILES", {
+        "success": "/tmp/verify_success.wav",
+        "failed_identity": "/tmp/verify_failed_identity.wav",
+    })
+    monkeypatch.setattr(healthcheck, "_writable_parent", lambda path: True)
+    monkeypatch.setattr(healthcheck, "_file_exists", lambda path: path.endswith("success.wav"))
+    monkeypatch.setattr(healthcheck, "_dashboard_port_status", lambda port: ("PASS", "dashboard_port", str(port)))
+    monkeypatch.setattr(healthcheck, "_command_available", lambda name: True)
+
+    class FakeBluetoothManager:
+        def status(self):
+            return {"adapter": True, "connected": True}
+
+    monkeypatch.setattr(healthcheck, "BluetoothManager", FakeBluetoothManager)
+
+    exit_code = healthcheck.run_healthcheck(quick=True)
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "verify_prompt_files" in output
+    assert "verify_failed_identity.wav" in output

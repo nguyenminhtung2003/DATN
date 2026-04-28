@@ -45,6 +45,11 @@ INDEX_HTML = """<!doctype html>
       <button onclick="testAudio(1)">Test Level 1</button>
       <button onclick="testAudio(2)">Test Level 2</button>
       <button onclick="testAudio(3)">Test Level 3</button>
+      <button onclick="testPrompt('prepare_countdown')">Verify Countdown</button>
+      <button onclick="testPrompt('success')">Verify Success</button>
+      <button onclick="testPrompt('failed_identity')">Verify Failed</button>
+      <button onclick="testPrompt('no_face')">No Face</button>
+      <button onclick="testPrompt('no_enrollment')">No Enrollment</button>
       <button onclick="stopAudio()">Stop Audio</button>
     </section>
     <section><h2>AI</h2><dl id="ai"></dl></section>
@@ -77,6 +82,10 @@ INDEX_HTML = """<!doctype html>
     }
     async function testAudio(level) {
       await fetch('/api/audio/test/' + level, {method: 'POST'});
+      refresh();
+    }
+    async function testPrompt(promptName) {
+      await fetch('/api/audio/prompt/' + promptName, {method: 'POST'});
       refresh();
     }
     async function stopAudio() {
@@ -184,6 +193,17 @@ def create_app(runtime_dir=None, speaker=None, bluetooth_manager=None, service_c
     @app.post("/api/alerts/test/{level}")
     def alerts_test(level: int):
         return _play_test_alert(level)
+
+    @app.post("/api/audio/prompt/{prompt_name}")
+    def audio_prompt(prompt_name: str):
+        allowed_prompts = set(getattr(config, "VERIFY_PROMPT_FILES", {}).keys())
+        if prompt_name not in allowed_prompts:
+            raise HTTPException(status_code=400, detail="unknown verification prompt")
+
+        play_prompt = getattr(speaker, "play_prompt", None)
+        if not callable(play_prompt):
+            return {"ok": False, "prompt": prompt_name}
+        return {"ok": bool(play_prompt(prompt_name)), "prompt": prompt_name}
 
     @app.post("/api/audio/stop")
     def audio_stop():
