@@ -15,6 +15,8 @@ class TestVerifyFlow(unittest.TestCase):
     def setUp(self, mock_local_queue_class):
         # Override config features to minimal set to avoid starting threads
         self.original_features = config.FEATURES.copy()
+        self.original_demo_mode = config.DEMO_MODE_ALLOW_UNVERIFIED
+        config.DEMO_MODE_ALLOW_UNVERIFIED = False
         config.FEATURES = {
             "camera": False,
             "drowsiness": False,
@@ -34,6 +36,7 @@ class TestVerifyFlow(unittest.TestCase):
         
     def tearDown(self):
         config.FEATURES = self.original_features
+        config.DEMO_MODE_ALLOW_UNVERIFIED = self.original_demo_mode
 
     def verify_rejection_called(self, event_type, expected_field, expected_val):
         """Helper to ensure event is queued upon rejection"""
@@ -169,6 +172,93 @@ class TestVerifyFlow(unittest.TestCase):
         driver_events = self.queued_messages("driver")
         self.assertTrue(driver_events, "Expected driver probe event before verification")
         self.assertEqual(driver_events[0]["rfid"], "UID-123")
+
+    def attach_prompt_speaker(self):
+        speaker = Mock()
+        speaker.play_prompt.return_value = True
+        self.app.speaker = speaker
+        return speaker
+
+    def test_rfid_scan_plays_countdown_before_face_capture(self):
+        config.DEMO_MODE_ALLOW_UNVERIFIED = False
+        speaker = self.attach_prompt_speaker()
+        mock_verifier = Mock()
+        mock_verifier.has_enrollment.return_value = False
+        self.app.verifier = mock_verifier
+
+        with patch.object(self.app, "_verify_driver") as verify_driver:
+            self.app._on_rfid_scan("UID-123")
+
+        speaker.play_prompt.assert_called_once_with(
+            "prepare_countdown",
+            wait=True,
+            timeout=config.VERIFY_PROMPT_WAIT_TIMEOUT_SEC,
+        )
+        verify_driver.assert_called_once_with("UID-123")
+
+    def test_match_plays_success_prompt_and_starts_session(self):
+        speaker = self.attach_prompt_speaker()
+        mock_verifier = Mock()
+        mock_verifier.has_enrollment.return_value = True
+        mock_verifier.extract_face.side_effect = lambda frame, bbox: frame
+        mock_verifier.verify.return_value = VerifyResult.MATCH
+        self.app.verifier = mock_verifier
+        self.app.frame_buffer = Mock()
+        self.app.frame_buffer.get_good_face_frame.return_value = ([[123]], None, 0)
+
+        self.app.state.transition(State.VERIFYING_DRIVER)
+        self.app._verify_driver("UID-123")
+
+        speaker.play_prompt.assert_called_with("success")
+        self.assertEqual(self.app.state.state, State.RUNNING)
+        self.verify_snapshot_called("VERIFIED")
+
+    def test_mismatch_plays_failed_identity_prompt_and_queues_face_mismatch(self):
+        speaker = self.attach_prompt_speaker()
+        mock_verifier = Mock()
+        mock_verifier.has_enrollment.return_value = True
+        mock_verifier.extract_face.side_effect = lambda frame, bbox: frame
+        mock_verifier.verify.return_value = VerifyResult.MISMATCH
+        self.app.verifier = mock_verifier
+        self.app.frame_buffer = Mock()
+        self.app.frame_buffer.get_good_face_frame.return_value = ([[123]], None, 0)
+
+        self.app.state.transition(State.VERIFYING_DRIVER)
+        with patch("time.sleep", return_value=None):
+            self.app._verify_driver("UID-123")
+
+        speaker.play_prompt.assert_called_with("failed_identity")
+        self.verify_rejection_called("face_mismatch", "expected", "unknown")
+
+    def test_no_face_plays_no_face_prompt(self):
+        config.DEMO_MODE_ALLOW_UNVERIFIED = False
+        speaker = self.attach_prompt_speaker()
+        mock_verifier = Mock()
+        mock_verifier.has_enrollment.return_value = True
+        self.app.verifier = mock_verifier
+        self.app.frame_buffer = Mock()
+        self.app.frame_buffer.get_good_face_frame.return_value = (None, None, 0)
+
+        self.app.state.transition(State.VERIFYING_DRIVER)
+        with patch("time.sleep", return_value=None):
+            self.app._verify_driver("UID-123")
+
+        speaker.play_prompt.assert_called_with("no_face")
+        self.verify_rejection_called("verify_error", "reason", "NO_FACE_FRAME")
+
+    def test_no_enrollment_plays_no_enrollment_prompt(self):
+        config.DEMO_MODE_ALLOW_UNVERIFIED = False
+        speaker = self.attach_prompt_speaker()
+        mock_verifier = Mock()
+        mock_verifier.has_enrollment.return_value = False
+        self.app.verifier = mock_verifier
+
+        self.app.state.transition(State.VERIFYING_DRIVER)
+        with patch("time.sleep", return_value=None):
+            self.app._verify_driver("UID-123")
+
+        speaker.play_prompt.assert_called_with("no_enrollment")
+        self.verify_rejection_called("verify_error", "reason", "NO_ENROLLMENT")
 
 if __name__ == "__main__":
     unittest.main()
