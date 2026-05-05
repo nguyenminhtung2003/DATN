@@ -184,7 +184,12 @@ class AlertManager:
 
         # ── Apply level change with cooldown ────────────────
         if new_level != self._current_level:
-            if (now - self._last_alert_time) >= config.ALERT_COOLDOWN or new_level > self._current_level:
+            explicit_ai_deescalation = (
+                ai_state == "NORMAL"
+                and hinted_level == AlertLevel.NONE
+                and new_level < self._current_level
+            )
+            if explicit_ai_deescalation or (now - self._last_alert_time) >= config.ALERT_COOLDOWN or new_level > self._current_level:
                 old_level = self._current_level
                 self._current_level = new_level
                 self._last_alert_time = now
