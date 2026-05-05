@@ -120,8 +120,21 @@ class LocalMonitorGUITest(unittest.TestCase):
             "ai": {
                 "state": "YAWNING",
                 "alert_hint": 1,
-                "thresholds": {"ear_closed": 0.24, "mar_yawn": 0.45, "pitch_down": -15.0},
-                "features": {"perclos_short": 0.1, "perclos_long": 0.2},
+                "thresholds": {
+                    "ear_closed": 0.275,
+                    "ear_open": 0.32,
+                    "ear_drop_closed": 0.13,
+                    "mar_yawn": 0.45,
+                    "pitch_down": -15.0,
+                },
+                "features": {
+                    "ear_drop_score": 0.156,
+                    "eyes_open_sec": 1.2,
+                    "perclos_gate_active": False,
+                    "one_eye_guard_active": True,
+                    "perclos_short": 0.1,
+                    "perclos_long": 0.2,
+                },
                 "landmarks": {
                     "left_eye_points": [(1, 1), (2, 1), (3, 1)],
                     "right_eye_points": [(1, 3), (2, 3), (3, 3)],
@@ -136,7 +149,13 @@ class LocalMonitorGUITest(unittest.TestCase):
         state = LocalMonitorState.from_runtime_payload(payload)
 
         self.assertEqual(state.alert_hint, 1)
-        self.assertEqual(state.ear_threshold, 0.24)
+        self.assertEqual(state.ear_threshold, 0.275)
+        self.assertEqual(state.ear_open_baseline, 0.32)
+        self.assertEqual(state.ear_drop_score, 0.156)
+        self.assertEqual(state.ear_drop_threshold, 0.13)
+        self.assertEqual(state.eyes_open_sec, 1.2)
+        self.assertFalse(state.perclos_gate_active)
+        self.assertTrue(state.one_eye_guard_active)
         self.assertEqual(state.mar_threshold, 0.45)
         self.assertTrue(state.calibration_valid)
         self.assertEqual(state.left_eye_points, [(1, 1), (2, 1), (3, 1)])

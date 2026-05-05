@@ -97,6 +97,57 @@ def test_panel_displays_thresholds_and_calibration_status():
     assert any("CALIBRATED" in line for line in lines)
 
 
+def test_panel_displays_adaptive_recovery_telemetry():
+    monitor = load_script()
+
+    class Metrics:
+        face_present = True
+        ear = 0.30
+        left_ear = 0.30
+        right_ear = 0.30
+        ear_used = 0.30
+        eye_quality = {"usable": True, "selected": "both", "reason": "OK"}
+        mar = 0.12
+        pitch = 0.0
+
+    ai_result = {
+        "state": "NORMAL",
+        "confidence": 0.92,
+        "reason": "stable open eyes",
+        "alert_hint": 0,
+        "thresholds": {
+            "ear_closed": 0.275,
+            "ear_open": 0.32,
+            "ear_drop_closed": 0.13,
+            "mar_yawn": 0.45,
+            "pitch_down": -15.0,
+        },
+        "features": {
+            "ear_drop_score": 0.156,
+            "eyes_open_sec": 1.2,
+            "perclos_gate_active": False,
+            "one_eye_guard_active": True,
+            "perclos_short": 0.0,
+            "perclos_long": 0.42,
+        },
+    }
+
+    lines = monitor.build_overlay_lines(
+        metrics=Metrics(),
+        perclos=0.42,
+        ai_result=ai_result,
+        camera_fps=10.0,
+        ai_fps=10.0,
+        frame_count=1,
+    )
+
+    assert any("Adaptive base 0.320" in line for line in lines)
+    assert any("drop 0.156/0.130" in line for line in lines)
+    assert any("open 1.2s" in line for line in lines)
+    assert any("PERCLOS gate OFF" in line for line in lines)
+    assert any("one-eye guard ON" in line for line in lines)
+
+
 def test_draws_eye_and_mouth_landmarks_when_present():
     monitor = load_script()
 

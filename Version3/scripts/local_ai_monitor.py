@@ -112,6 +112,17 @@ def build_overlay_lines(metrics, perclos, ai_result, camera_fps, ai_fps, frame_c
             float(features.get("perclos_short", perclos) or 0.0),
             float(features.get("perclos_long", perclos) or 0.0),
         ),
+        "Adaptive base %.3f | threshold %.3f | drop %.3f/%.3f | open %.1fs" % (
+            float(thresholds.get("ear_open") or 0.0),
+            float(thresholds.get("ear_closed", config.EAR_THRESHOLD) or config.EAR_THRESHOLD),
+            float(features.get("ear_drop_score") or 0.0),
+            float(thresholds.get("ear_drop_closed") or 0.13),
+            float(features.get("eyes_open_sec") or 0.0),
+        ),
+        "PERCLOS gate %s | one-eye guard %s" % (
+            "ON" if features.get("perclos_gate_active") else "OFF",
+            "ON" if features.get("one_eye_guard_active") else "OFF",
+        ),
         "%s | Samples %s" % (calibration_text, calibration.get("sample_count", 0)),
         "Speaker BT %s | Audio %s" % (
             "ON" if speaker_status.get("connected") else "OFF",
