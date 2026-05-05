@@ -247,3 +247,36 @@ def test_one_clear_eye_with_glasses_stays_normal_when_eye_used_is_open():
     assert result["state"] == AIState.NORMAL
     assert result["features"]["ear"] == 0.29
     assert result["features"]["eye_quality"]["selected"] == "right"
+
+
+def test_stale_long_perclos_does_not_keep_drowsy_after_stable_open_eyes():
+    classifier = DrowsinessClassifier(profile=profile(ear=0.24), target_fps=10)
+
+    for _ in range(12):
+        result = classifier.update(metrics(ear=0.20, mar=0.12, pitch=0.0))
+
+    assert result["state"] == AIState.DROWSY
+    assert result["features"]["perclos_long"] >= 0.35
+
+    for _ in range(12):
+        result = classifier.update(metrics(ear=0.29, mar=0.12, pitch=0.0))
+
+    assert result["state"] == AIState.NORMAL
+    assert result["alert_hint"] == 0
+    assert result["features"]["eyes_open_sec"] >= 1.0
+    assert result["features"]["perclos_long"] >= 0.35
+
+
+def test_recent_closed_eyes_can_still_use_long_perclos_for_fatigue():
+    classifier = DrowsinessClassifier(profile=profile(ear=0.24), target_fps=10)
+
+    for _ in range(7):
+        for _ in range(3):
+            result = classifier.update(metrics(ear=0.20, mar=0.12, pitch=0.0))
+        result = classifier.update(metrics(ear=0.29, mar=0.12, pitch=0.0))
+
+    assert result["state"] == AIState.DROWSY
+    assert result["alert_hint"] == 2
+    assert result["durations"]["eyes_closed_sec"] == 0.0
+    assert result["features"]["perclos_long"] >= 0.35
+    assert result["features"]["perclos_gate_active"] is True

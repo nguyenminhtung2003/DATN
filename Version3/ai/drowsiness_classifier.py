@@ -37,6 +37,7 @@ class DrowsinessClassifier:
         self._perclos_long = deque(maxlen=max(1, int(30.0 * self._target_fps)))
         self._profile = profile or CalibrationProfile.fallback(reason="FALLBACK")
         self._eyes_closed_frames = 0
+        self._eyes_open_frames = 0
         self._mouth_open_frames = 0
         self._head_down_frames = 0
         self._no_face_frames = 0
@@ -53,6 +54,7 @@ class DrowsinessClassifier:
         self._perclos_long.clear()
         self._last_result = self._result(AIState.UNKNOWN, 0.0, "No samples yet", alert_hint=0)
         self._eyes_closed_frames = 0
+        self._eyes_open_frames = 0
         self._mouth_open_frames = 0
         self._head_down_frames = 0
         self._no_face_frames = 0
@@ -121,6 +123,7 @@ class DrowsinessClassifier:
 
         if not sample["usable"]:
             self._eyes_closed_frames = 0
+            self._eyes_open_frames = 0
             self._mouth_open_frames = 0
             self._head_down_frames = 0
             no_face_sec = self._duration(self._no_face_frames)
@@ -136,14 +139,21 @@ class DrowsinessClassifier:
         self._perclos_short.append(closed_bit)
         self._perclos_long.append(closed_bit)
 
-        self._eyes_closed_frames = self._eyes_closed_frames + 1 if ear_low else 0
+        if ear_low:
+            self._eyes_closed_frames += 1
+            self._eyes_open_frames = 0
+        else:
+            self._eyes_closed_frames = 0
+            self._eyes_open_frames += 1
         self._mouth_open_frames = self._mouth_open_frames + 1 if mouth_open else 0
         self._head_down_frames = self._head_down_frames + 1 if head_down else 0
 
         eyes_closed_sec = self._duration(self._eyes_closed_frames)
+        eyes_open_sec = self._duration(self._eyes_open_frames)
         mouth_open_sec = self._duration(self._mouth_open_frames)
         head_down_sec = self._duration(self._head_down_frames)
         perclos_long = self._ratio(self._perclos_long)
+        perclos_gate_active = eyes_open_sec < 1.0
 
         if mouth_open_sec >= 1.0:
             if not self._yawn_times or now - self._yawn_times[-1] > 2.0:
@@ -185,7 +195,11 @@ class DrowsinessClassifier:
         if head_down_sec >= 1.0:
             return AIState.HEAD_DOWN, 0.82, "Head down for %.1fs" % head_down_sec, 1
 
-        if perclos_long >= 0.35 and len(self._perclos_long) >= max(5, int(2.0 * self._target_fps)):
+        if (
+            perclos_gate_active
+            and perclos_long >= 0.35
+            and len(self._perclos_long) >= max(5, int(2.0 * self._target_fps))
+        ):
             return AIState.DROWSY, 0.90, "Long PERCLOS %.2f indicates fatigue" % perclos_long, 2
 
         return AIState.NORMAL, 0.92, "Normal face posture and blink metrics", 0
@@ -201,6 +215,8 @@ class DrowsinessClassifier:
         features.update({
             "perclos_short": self._ratio(self._perclos_short),
             "perclos_long": self._ratio(self._perclos_long),
+            "eyes_open_sec": self._duration(self._eyes_open_frames),
+            "perclos_gate_active": self._duration(self._eyes_open_frames) < 1.0,
             "ear": sample["ear"],
             "left_ear": sample["left_ear"],
             "right_ear": sample["right_ear"],
@@ -218,6 +234,7 @@ class DrowsinessClassifier:
     def _durations(self):
         return {
             "eyes_closed_sec": self._duration(self._eyes_closed_frames),
+            "eyes_open_sec": self._duration(self._eyes_open_frames),
             "mouth_open_sec": self._duration(self._mouth_open_frames),
             "head_down_sec": self._duration(self._head_down_frames),
             "no_face_sec": self._duration(self._no_face_frames),
