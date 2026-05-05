@@ -42,6 +42,7 @@ class DrowsinessClassifier:
         self._head_down_frames = 0
         self._no_face_frames = 0
         self._yawn_times = deque()
+        self._last_eye_decision = self._default_eye_decision()
         self._last_result = self._result(AIState.UNKNOWN, 0.0, "No samples yet", alert_hint=0)
 
     def set_profile(self, profile):
@@ -59,6 +60,7 @@ class DrowsinessClassifier:
         self._head_down_frames = 0
         self._no_face_frames = 0
         self._yawn_times.clear()
+        self._last_eye_decision = self._default_eye_decision()
 
     def update(self, metrics):
         start_time = time.time()
@@ -110,9 +112,71 @@ class DrowsinessClassifier:
             "pitch": float(metrics.get("pitch", 0.0) or 0.0),
         }
 
+    @staticmethod
+    def _ear_drop_score(ear_open, ear_current):
+        if ear_open is None or float(ear_open or 0.0) <= 0.0:
+            return 0.0
+        return max(0.0, (float(ear_open) - float(ear_current or 0.0)) / float(ear_open))
+
+    @staticmethod
+    def _default_eye_decision():
+        return {
+            "closed": False,
+            "closed_by_threshold": False,
+            "closed_by_drop": False,
+            "ear_drop_score": 0.0,
+            "left_ear_drop_score": 0.0,
+            "right_ear_drop_score": 0.0,
+            "one_eye_guard_active": False,
+        }
+
+    def _eye_closed_decision(self, sample, thresholds):
+        ear = float(sample["ear"] or 0.0)
+        left_ear = float(sample["left_ear"] or ear)
+        right_ear = float(sample["right_ear"] or ear)
+        ear_open = thresholds.get("ear_open")
+        ear_closed = float(thresholds["ear_closed"])
+        drop_threshold = float(thresholds.get("ear_drop_closed", 0.13))
+
+        used_drop = self._ear_drop_score(ear_open, ear)
+        left_drop = self._ear_drop_score(ear_open, left_ear)
+        right_drop = self._ear_drop_score(ear_open, right_ear)
+
+        used_closed_by_threshold = ear <= ear_closed
+        used_closed_by_drop = used_drop >= drop_threshold
+        left_closed = left_ear <= ear_closed or left_drop >= drop_threshold
+        right_closed = right_ear <= ear_closed or right_drop >= drop_threshold
+
+        selected = (sample.get("eye_quality") or {}).get("selected", "both")
+        one_eye_guard_active = False
+        if selected == "both" and left_closed != right_closed:
+            one_eye_guard_active = True
+            closed = False
+        elif selected == "left":
+            closed = left_closed
+        elif selected == "right":
+            closed = right_closed
+        else:
+            closed = used_closed_by_threshold or used_closed_by_drop
+
+        return {
+            "closed": bool(closed),
+            "closed_by_threshold": bool(used_closed_by_threshold),
+            "closed_by_drop": bool(used_closed_by_drop),
+            "ear_drop_score": float(used_drop),
+            "left_ear_drop_score": float(left_drop),
+            "right_ear_drop_score": float(right_drop),
+            "one_eye_guard_active": bool(one_eye_guard_active),
+        }
+
     def _classify_sample(self, sample, now):
         thresholds = self._thresholds()
-        ear_low = sample["usable"] and sample["ear"] < thresholds["ear_closed"]
+        if sample["usable"]:
+            eye_decision = self._eye_closed_decision(sample, thresholds)
+        else:
+            eye_decision = self._default_eye_decision()
+        ear_low = sample["usable"] and eye_decision["closed"]
+        self._last_eye_decision = eye_decision
         mouth_open = sample["usable"] and sample["mar"] > thresholds["mar_yawn"]
         head_down = sample["usable"] and sample["pitch"] <= thresholds["pitch_down"]
 
@@ -126,6 +190,7 @@ class DrowsinessClassifier:
             self._eyes_open_frames = 0
             self._mouth_open_frames = 0
             self._head_down_frames = 0
+            self._last_eye_decision = self._default_eye_decision()
             no_face_sec = self._duration(self._no_face_frames)
             if not sample["face_present"] and no_face_sec >= 0.7:
                 alert_hint = 1 if no_face_sec >= 1.5 else 0
@@ -224,6 +289,10 @@ class DrowsinessClassifier:
             "eye_quality": sample["eye_quality"],
             "mar": sample["mar"],
             "pitch": sample["pitch"],
+        })
+        features.update(self._last_eye_decision)
+        features.update({
+            "ear_open_baseline": self._thresholds().get("ear_open"),
         })
         return features
 

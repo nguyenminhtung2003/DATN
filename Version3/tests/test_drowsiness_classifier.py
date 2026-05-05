@@ -4,14 +4,17 @@ from ai.feature_extractor import FeatureExtractor
 import config
 
 
-def profile(ear=0.24, mar=0.45, pitch=-15.0):
+def profile(ear=0.24, mar=0.45, pitch=-15.0, ear_open=0.29, ear_drop=0.13):
     return CalibrationProfile(
         valid=True,
         reason="OK",
-        ear_open_median=0.29,
+        ear_open_median=ear_open,
         mar_closed_median=0.12,
         pitch_neutral=pitch + 15.0,
         ear_closed_threshold=ear,
+        ear_adaptive_closed_threshold=ear,
+        ear_drop_closed_threshold=ear_drop,
+        ear_open_delta=0.045,
         mar_yawn_threshold=mar,
         pitch_down_threshold=pitch,
         sample_count=40,
@@ -280,3 +283,56 @@ def test_recent_closed_eyes_can_still_use_long_perclos_for_fatigue():
     assert result["durations"]["eyes_closed_sec"] == 0.0
     assert result["features"]["perclos_long"] >= 0.35
     assert result["features"]["perclos_gate_active"] is True
+
+
+def test_glasses_closed_eyes_detected_by_drop_from_baseline():
+    classifier = DrowsinessClassifier(profile=profile(ear=0.275, ear_open=0.32), target_fps=10)
+
+    for _ in range(8):
+        result = classifier.update(metrics(ear=0.27, left_ear=0.27, right_ear=0.27, mar=0.12, pitch=0.0))
+
+    assert result["state"] == AIState.DROWSY
+    assert result["alert_hint"] == 1
+    assert round(result["features"]["ear_drop_score"], 3) >= 0.13
+    assert result["features"]["closed_by_drop"] is True
+
+
+def test_glasses_open_eyes_stay_normal_near_baseline():
+    classifier = DrowsinessClassifier(profile=profile(ear=0.275, ear_open=0.32), target_fps=10)
+
+    for _ in range(20):
+        result = classifier.update(metrics(ear=0.30, left_ear=0.30, right_ear=0.30, mar=0.12, pitch=0.0))
+
+    assert result["state"] == AIState.NORMAL
+    assert result["alert_hint"] == 0
+    assert round(result["features"]["ear_drop_score"], 3) < 0.13
+
+
+def test_non_glasses_closed_eyes_still_detected_at_default_threshold():
+    classifier = DrowsinessClassifier(profile=profile(ear=0.24, ear_open=0.27), target_fps=10)
+
+    for _ in range(8):
+        result = classifier.update(metrics(ear=0.24, left_ear=0.24, right_ear=0.24, mar=0.12, pitch=0.0))
+
+    assert result["state"] == AIState.DROWSY
+    assert result["alert_hint"] == 1
+    assert result["features"]["closed_by_threshold"] is True
+
+
+def test_one_low_eye_does_not_close_when_other_eye_is_clearly_open():
+    classifier = DrowsinessClassifier(profile=profile(ear=0.275, ear_open=0.32), target_fps=10)
+
+    for _ in range(20):
+        result = classifier.update(metrics(
+            face_present=True,
+            ear=0.275,
+            left_ear=0.32,
+            right_ear=0.23,
+            mar=0.12,
+            pitch=0.0,
+            eye_quality={"usable": True, "selected": "both", "reason": "OK"},
+        ))
+
+    assert result["state"] == AIState.NORMAL
+    assert result["alert_hint"] == 0
+    assert result["features"]["one_eye_guard_active"] is True
