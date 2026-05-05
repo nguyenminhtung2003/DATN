@@ -56,7 +56,8 @@ def test_calibration_profile_valid_for_open_eyes():
     profile = calibrator.profile
     assert profile.valid is True
     assert profile.reason == "OK"
-    assert 0.20 <= profile.ear_closed_threshold <= 0.24
+    assert round(profile.ear_closed_threshold, 3) == 0.245
+    assert round(profile.ear_adaptive_closed_threshold, 3) == 0.245
     assert profile.mar_yawn_threshold >= 0.45
     assert profile.pitch_down_threshold == profile.pitch_neutral - 15.0
     assert round(profile.left_ear_open_median, 2) == 0.30
@@ -125,3 +126,33 @@ def test_calibration_rejects_when_not_enough_usable_eye_samples():
     assert profile.valid is False
     assert profile.reason == "NOT_ENOUGH_SAMPLES"
     assert profile.sample_count == 0
+
+
+def test_calibration_keeps_non_glasses_threshold_at_safety_default():
+    calibrator = DriverCalibrator(duration_sec=5, min_samples=30)
+
+    for i in range(35):
+        calibrator.add(sample(ear=0.27, left_ear=0.28, right_ear=0.26), i * 0.1)
+
+    profile = calibrator.profile
+
+    assert profile.valid is True
+    assert round(profile.ear_open_median, 3) == 0.270
+    assert round(profile.ear_closed_threshold, 3) == 0.240
+    assert round(profile.ear_adaptive_closed_threshold, 3) == 0.240
+    assert round(profile.ear_drop_closed_threshold, 3) == 0.130
+
+
+def test_calibration_raises_threshold_for_prescription_glasses_baseline():
+    calibrator = DriverCalibrator(duration_sec=5, min_samples=30)
+
+    for i in range(35):
+        calibrator.add(sample(ear=0.32, left_ear=0.33, right_ear=0.31), i * 0.1)
+
+    profile = calibrator.profile
+
+    assert profile.valid is True
+    assert round(profile.ear_open_median, 3) == 0.320
+    assert round(profile.ear_closed_threshold, 3) == 0.275
+    assert round(profile.ear_adaptive_closed_threshold, 3) == 0.275
+    assert round(profile.ear_drop_closed_threshold, 3) == 0.130

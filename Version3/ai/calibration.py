@@ -67,6 +67,9 @@ class CalibrationProfile:
         left_ear_open_median=None,
         right_ear_open_median=None,
         ear_used_open_median=None,
+        ear_adaptive_closed_threshold=None,
+        ear_drop_closed_threshold=None,
+        ear_open_delta=None,
     ):
         self.valid = bool(valid)
         self.reason = reason
@@ -75,6 +78,21 @@ class CalibrationProfile:
         self.pitch_neutral = FALLBACK_PITCH_NEUTRAL if pitch_neutral is None else float(pitch_neutral)
         self.ear_closed_threshold = (
             FALLBACK_EAR_CLOSED if ear_closed_threshold is None else float(ear_closed_threshold)
+        )
+        self.ear_adaptive_closed_threshold = (
+            self.ear_closed_threshold
+            if ear_adaptive_closed_threshold is None
+            else float(ear_adaptive_closed_threshold)
+        )
+        self.ear_drop_closed_threshold = (
+            float(getattr(config, "EAR_DROP_CLOSED_THRESHOLD", 0.13))
+            if ear_drop_closed_threshold is None
+            else float(ear_drop_closed_threshold)
+        )
+        self.ear_open_delta = (
+            float(getattr(config, "EAR_OPEN_DELTA", 0.045))
+            if ear_open_delta is None
+            else float(ear_open_delta)
         )
         self.mar_yawn_threshold = FALLBACK_MAR_YAWN if mar_yawn_threshold is None else float(mar_yawn_threshold)
         self.pitch_down_threshold = (
@@ -95,6 +113,9 @@ class CalibrationProfile:
             mar_closed_median=None,
             pitch_neutral=FALLBACK_PITCH_NEUTRAL,
             ear_closed_threshold=getattr(config, "EAR_THRESHOLD", FALLBACK_EAR_CLOSED),
+            ear_adaptive_closed_threshold=getattr(config, "EAR_THRESHOLD", FALLBACK_EAR_CLOSED),
+            ear_drop_closed_threshold=getattr(config, "EAR_DROP_CLOSED_THRESHOLD", 0.13),
+            ear_open_delta=getattr(config, "EAR_OPEN_DELTA", 0.045),
             mar_yawn_threshold=getattr(config, "MAR_THRESHOLD", FALLBACK_MAR_YAWN),
             pitch_down_threshold=getattr(config, "PITCH_DELTA_THRESHOLD", FALLBACK_PITCH_DOWN),
             sample_count=sample_count,
@@ -114,6 +135,9 @@ class CalibrationProfile:
             "mar_closed_median": self.mar_closed_median,
             "pitch_neutral": self.pitch_neutral,
             "ear_closed_threshold": self.ear_closed_threshold,
+            "ear_adaptive_closed_threshold": self.ear_adaptive_closed_threshold,
+            "ear_drop_closed_threshold": self.ear_drop_closed_threshold,
+            "ear_open_delta": self.ear_open_delta,
             "mar_yawn_threshold": self.mar_yawn_threshold,
             "pitch_down_threshold": self.pitch_down_threshold,
             "face_height_median": self.face_height_median,
@@ -212,7 +236,12 @@ class DriverCalibrator:
         if mar_closed > 0.35:
             return CalibrationProfile.fallback(reason="HIGH_MAR_BASELINE", sample_count=count)
 
-        ear_closed = _clamp(min(FALLBACK_EAR_CLOSED, ear_open - 0.02), 0.20, FALLBACK_EAR_CLOSED)
+        ear_delta = float(getattr(config, "EAR_OPEN_DELTA", 0.045))
+        ear_closed = _clamp(
+            max(FALLBACK_EAR_CLOSED, ear_open - ear_delta),
+            float(getattr(config, "EAR_ADAPTIVE_MIN", 0.20)),
+            float(getattr(config, "EAR_ADAPTIVE_MAX", 0.30)),
+        )
         mar_yawn = _clamp(max(FALLBACK_MAR_YAWN, mar_closed + 0.18), FALLBACK_MAR_YAWN, 0.65)
         pitch_down = pitch_neutral - 15.0
 
@@ -223,6 +252,9 @@ class DriverCalibrator:
             mar_closed_median=mar_closed,
             pitch_neutral=pitch_neutral,
             ear_closed_threshold=ear_closed,
+            ear_adaptive_closed_threshold=ear_closed,
+            ear_drop_closed_threshold=getattr(config, "EAR_DROP_CLOSED_THRESHOLD", 0.13),
+            ear_open_delta=ear_delta,
             mar_yawn_threshold=mar_yawn,
             pitch_down_threshold=pitch_down,
             sample_count=count,

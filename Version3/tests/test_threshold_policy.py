@@ -19,6 +19,9 @@ def test_threshold_policy_uses_profile_thresholds():
 
     assert thresholds == {
         "ear_closed": 0.24,
+        "ear_open": 0.29,
+        "ear_delta": 0.045,
+        "ear_drop_closed": 0.13,
         "mar_yawn": 0.45,
         "pitch_down": -15.0,
     }
@@ -28,5 +31,8 @@ def test_threshold_policy_uses_fallback_profile_when_missing():
     thresholds = ThresholdPolicy.from_profile(None).to_dict()
 
     assert thresholds["ear_closed"] == CalibrationProfile.fallback().ear_closed_threshold
+    assert thresholds["ear_open"] is None
+    assert thresholds["ear_delta"] == 0.045
+    assert thresholds["ear_drop_closed"] == 0.13
     assert thresholds["mar_yawn"] == CalibrationProfile.fallback().mar_yawn_threshold
     assert thresholds["pitch_down"] == CalibrationProfile.fallback().pitch_down_threshold
