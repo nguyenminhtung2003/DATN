@@ -140,7 +140,7 @@ async def dashboard_page(
 
     # Get recent alerts
     alerts_result = await db.execute(
-        select(SystemAlert).order_by(SystemAlert.timestamp.desc()).limit(20)
+        select(SystemAlert).order_by(SystemAlert.timestamp.desc()).limit(10)
     )
     recent_alerts = alerts_result.scalars().all()
 

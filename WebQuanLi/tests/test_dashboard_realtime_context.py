@@ -159,3 +159,42 @@ class DashboardRealtimeContextTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("00:13:30 - 28/04/2026", response.text)
         self.assertNotIn("17:13:30", response.text)
+
+    def test_dashboard_alert_log_is_capped_to_ten_latest_alerts(self):
+        async def seed_many_alerts():
+            async with self.session_factory() as db:
+                vehicle_result = await db.execute(select(Vehicle).where(Vehicle.device_id == self.device_id))
+                vehicle = vehicle_result.scalar_one()
+                for index in range(12):
+                    db.add(SystemAlert(
+                        vehicle_id=vehicle.id,
+                        alert_type=AlertType.DROWSINESS,
+                        alert_level=AlertLevel.LEVEL_1,
+                        ear_value=0.20,
+                        mar_value=0.10,
+                        message=f"alert cap {index:02d}",
+                        timestamp=datetime(2026, 5, 6, 12, index, 0, tzinfo=timezone.utc),
+                    ))
+                await db.commit()
+
+        asyncio.run(seed_many_alerts())
+
+        response = asyncio.run(self._request("GET", "/"))
+        alert_section = response.text.split('id="alert-section"', 1)[1].split("</section>", 1)[0]
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(alert_section.count('class="alert-row'), 10)
+        self.assertIn("alert cap 11", alert_section)
+        self.assertIn("alert cap 02", alert_section)
+        self.assertNotIn("alert cap 01", alert_section)
+        self.assertNotIn("alert cap 00", alert_section)
+        self.assertIn('id="alert-count">10', alert_section.replace("\n", ""))
+
+    def test_dashboard_realtime_alert_insert_trims_rows_to_ten(self):
+        response = asyncio.run(self._request("GET", "/"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("const ALERT_LOG_LIMIT = 10;", response.text)
+        self.assertIn("function trimAlertRows()", response.text)
+        self.assertIn("rows.slice(ALERT_LOG_LIMIT).forEach(row => row.remove());", response.text)
+        self.assertIn("refreshAlertCount();", response.text)

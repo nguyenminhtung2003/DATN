@@ -355,6 +355,34 @@
         </div>`;
     }
 
+    const ALERT_LOG_LIMIT = 10;
+
+    function refreshAlertCount() {
+        const tbody = document.getElementById('alert-log-body');
+        const count = document.getElementById('alert-count');
+        if (!tbody || !count) return;
+        count.textContent = String(tbody.querySelectorAll('tr.alert-row').length);
+    }
+
+    function trimAlertRows() {
+        const tbody = document.getElementById('alert-log-body');
+        if (!tbody) return;
+        const rows = Array.from(tbody.querySelectorAll('tr.alert-row'));
+        rows.slice(ALERT_LOG_LIMIT).forEach(row => row.remove());
+        refreshAlertCount();
+    }
+
+    function prependAlertRow(row) {
+        const tbody = document.getElementById('alert-log-body');
+        if (!tbody) return;
+        const emptyRow = tbody.querySelector('td[colspan="6"]');
+        if (emptyRow && emptyRow.parentElement) {
+            emptyRow.parentElement.remove();
+        }
+        tbody.insertBefore(row, tbody.firstChild);
+        trimAlertRows();
+    }
+
     // Alert row
     function addAlertRow(data) {
         const tbody = document.getElementById('alert-log-body');
@@ -367,11 +395,7 @@
         <td>${data.ear ? data.ear.toFixed(2) : '—'}</td>
         <td>${data.mar ? data.mar.toFixed(2) : '—'}</td>
         <td>Cảnh báo buồn ngủ</td>`;
-        tbody.insertBefore(row, tbody.firstChild);
-        // Update count
-        const count = document.getElementById('alert-count');
-        count.textContent = parseInt(count.textContent) + 1;
-        // Flash animation
+        prependAlertRow(row);
         setTimeout(() => row.classList.remove('alert-new'), 2000);
     }
 
@@ -387,8 +411,7 @@
         <td>—</td>
         <td>—</td>
         <td>RFID: ${data.rfid_tag} | Dự kiến: ${data.expected}</td>`;
-        tbody.insertBefore(row, tbody.firstChild);
-        // Trigger red flash on entire page
+        prependAlertRow(row);
         document.body.classList.add('mismatch-flash');
         setTimeout(() => document.body.classList.remove('mismatch-flash'), 3000);
     }
@@ -405,12 +428,7 @@
         <td>—</td>
         <td>—</td>
         <td>Lỗi xác thực (RFID: ${data.rfid_tag}): ${data.reason}</td>`;
-        tbody.insertBefore(row, tbody.firstChild);
-
-        // Update count
-        const count = document.getElementById('alert-count');
-        count.textContent = parseInt(count.textContent) + 1;
-        // Flash animation
+        prependAlertRow(row);
         setTimeout(() => row.classList.remove('alert-new'), 2000);
     }
 
