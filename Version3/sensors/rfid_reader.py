@@ -174,8 +174,6 @@ class RFIDReader:
                 self._last_device_path = path
                 logger.info(f"Found RFID device: {path} ({dev.name})")
                 return path
-                logger.info(f"Found RFID device: {dev.path} — {dev.name}")
-                return dev.path
 
         # Fallback: list all devices for manual selection
         if devices:

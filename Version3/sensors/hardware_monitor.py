@@ -79,22 +79,6 @@ class HardwareMonitor:
         except Exception:
             return False
 
-    def _check_rfid(self) -> bool:
-        if self._rfid is None:
-            return False
-        try:
-            return bool(self._rfid.is_alive)
-        except Exception:
-            return False
-
-    def _check_gps(self) -> bool:
-        if not config.HAS_GPS or self._gps is None:
-            return False
-        try:
-            return bool(self._gps.is_alive)
-        except Exception:
-            return False
-
     def _check_speaker(self) -> bool:
         if self._speaker is None:
             return False
