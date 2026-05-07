@@ -31,6 +31,7 @@ async def init_db():
     from app.models import User, Vehicle, Driver, HardwareStatus, DriverSession, SystemAlert, OtaAuditLog  # noqa: F401
     from app.config import settings as cfg
     from app.auth.utils import hash_password
+    from sqlalchemy import or_, select
 
     cfg.DATA_DIR.mkdir(parents=True, exist_ok=True)
     cfg.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -40,7 +41,6 @@ async def init_db():
 
     # Seed admin user
     async with async_session_factory() as session:
-        from sqlalchemy import select
         result = await session.execute(select(User).where(User.username == cfg.ADMIN_USERNAME))
         existing = result.scalar_one_or_none()
         if not existing:
@@ -51,12 +51,26 @@ async def init_db():
             )
             session.add(admin)
 
-            # Seed a default vehicle
+        default_plate = "59A-12345"
+        default_device_id = "JETSON-001"
+        result = await session.execute(
+            select(Vehicle)
+            .where(
+                or_(
+                    Vehicle.plate_number == default_plate,
+                    Vehicle.device_id == default_device_id,
+                )
+            )
+            .limit(1)
+        )
+        existing_vehicle = result.scalars().first()
+        if not existing_vehicle:
             vehicle = Vehicle(
-                plate_number="59A-12345",
+                plate_number=default_plate,
                 name="Xe Demo 01",
-                device_id="JETSON-001",
+                device_id=default_device_id,
                 manager_phone="0901234567",
             )
             session.add(vehicle)
-            await session.commit()
+
+        await session.commit()
