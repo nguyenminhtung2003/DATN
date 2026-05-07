@@ -17,10 +17,25 @@ try:
 except ImportError:
     cv2 = None
 
-try:
-    import mediapipe as mp
-except ImportError:
-    mp = None
+def _patch_protobuf_descriptor_compat():
+    try:
+        from google.protobuf import descriptor as protobuf_descriptor
+    except Exception:
+        return
+    if not hasattr(protobuf_descriptor, "_internal_create_key"):
+        protobuf_descriptor._internal_create_key = object()
+
+
+def _import_optional_mediapipe():
+    _patch_protobuf_descriptor_compat()
+    try:
+        import mediapipe as mediapipe_module
+    except Exception as exc:
+        return None, exc
+    return mediapipe_module, None
+
+
+mp, _MEDIAPIPE_IMPORT_ERROR = _import_optional_mediapipe()
 
 from utils.logger import get_logger
 import config
@@ -285,6 +300,8 @@ class FaceAnalyzer:
         if cv2 is None:
             raise ImportError("opencv-python is not installed")
         if mp is None:
+            if _MEDIAPIPE_IMPORT_ERROR is not None:
+                raise ImportError("mediapipe import failed: %s" % _MEDIAPIPE_IMPORT_ERROR)
             raise ImportError("mediapipe is not installed")
 
         self._face_mesh = self._create_face_mesh()

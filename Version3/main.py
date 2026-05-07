@@ -460,6 +460,7 @@ class DrowsiGuard:
             self._set_verify_status("VERIFYING", "RFID scanned; awaiting face verification")
             self._emit_driver_probe(uid)
             self.state.transition(State.VERIFYING_DRIVER, f"RFID scan UID={uid}")
+            self._play_verify_prompt("prepare_countdown", wait=True)
             self._verify_driver(uid)
         elif self.state.state == State.RUNNING:
             # End session
@@ -503,6 +504,7 @@ class DrowsiGuard:
             self._start_verified_session(uid)
         elif result == VerifyResult.MISMATCH:
             self._set_verify_status("MISMATCH", "Face does not match registered driver")
+            self._play_verify_prompt("failed_identity")
             logger.warning(f"❌ [VERIFY FAIL] Face mismatch UID={uid}!")
             self.state.transition(State.MISMATCH_ALERT, f"face mismatch UID={uid}")
             self.local_queue.push("verify_snapshot", {
@@ -654,6 +656,7 @@ class DrowsiGuard:
         self._last_reverify_time = time.monotonic()
         self._reverify_fail_count = 0
         self._set_verify_status("VERIFIED", "Face verification matched registered driver")
+        self._play_verify_prompt("success")
         logger.info(f"🟢 [SESSION START] Driver verified! UID={uid}")
         self.state.transition(State.RUNNING, f"driver verified UID={uid}")
         self._session_start_time = time.time()
@@ -696,6 +699,9 @@ class DrowsiGuard:
     def _reject_verification(self, uid: str, reason: str, state_reason: str):
         self._set_verify_status(reason, state_reason)
         self.local_queue.push("verify_error", {"rfid_tag": uid, "reason": reason, "timestamp": time.time()})
+        prompt_name = self._prompt_for_verify_failure(reason)
+        if prompt_name:
+            self._play_verify_prompt(prompt_name)
         time.sleep(2.0)
         self.state.transition(State.IDLE, state_reason)
 
@@ -789,6 +795,7 @@ class DrowsiGuard:
                 "expected": uid,
                 "timestamp": time.time(),
             })
+            self._play_verify_prompt("failed_identity")
             self._end_session()
         return False
 
@@ -846,6 +853,43 @@ class DrowsiGuard:
         self.state.transition(State.IDLE, "session ended")
         self.local_queue.push("session_end", {"rfid_tag": uid or "unknown", "timestamp": time.time()})
         logger.info(f"⬛ [SESSION END] Session ended for UID={uid}")
+
+    def _play_verify_prompt(self, prompt_name: str, wait: bool = False) -> bool:
+        if not getattr(config, "VERIFY_PROMPTS_ENABLED", True):
+            return False
+        if not self.speaker:
+            logger.warning("[VERIFY AUDIO] prompt=%s skipped; speaker is not available", prompt_name)
+            return False
+
+        play_prompt = getattr(self.speaker, "play_prompt", None)
+        if not callable(play_prompt):
+            logger.warning("[VERIFY AUDIO] prompt=%s skipped; speaker has no prompt API", prompt_name)
+            return False
+
+        try:
+            if wait:
+                ok = play_prompt(
+                    prompt_name,
+                    wait=True,
+                    timeout=getattr(config, "VERIFY_PROMPT_WAIT_TIMEOUT_SEC", 8.0),
+                )
+            else:
+                ok = play_prompt(prompt_name)
+        except Exception as exc:
+            logger.warning("[VERIFY AUDIO] prompt=%s failed: %s", prompt_name, exc)
+            return False
+
+        if not ok:
+            logger.warning("[VERIFY AUDIO] prompt=%s could not be played", prompt_name)
+        return bool(ok)
+
+    @staticmethod
+    def _prompt_for_verify_failure(reason: str):
+        if reason in {"MISSING_VERIFIER", "NO_ENROLLMENT", "BLOCKED"}:
+            return "no_enrollment"
+        if reason in {"NO_FACE_FRAME", "LOW_CONFIDENCE", "UNKNOWN_ERROR"}:
+            return "no_face"
+        return None
 
     def _set_verify_status(self, status: str, reason: str = ""):
         self._last_verify_status = status

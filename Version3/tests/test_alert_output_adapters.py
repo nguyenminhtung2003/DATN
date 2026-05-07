@@ -45,6 +45,30 @@ class AlertOutputAdapterTest(unittest.TestCase):
 
         self.assertFalse(snapshot["speaker"])
 
+    def test_hardware_monitor_status_matches_snapshot_payload(self):
+        monitor = HardwareMonitor()
+
+        snapshot = monitor.snapshot()
+        status = monitor.status(force_refresh=True)
+
+        self.assertEqual(status, snapshot)
+        for key in (
+            "power",
+            "camera",
+            "rfid",
+            "gps",
+            "speaker",
+            "cellular",
+            "camera_ok",
+            "rfid_reader_ok",
+            "gps_uart_ok",
+            "gps_fix_ok",
+            "speaker_output_ok",
+            "websocket_ok",
+            "details",
+        ):
+            self.assertIn(key, status)
+
     def test_hardware_monitor_reports_explicit_device_status_fields(self):
         class Device:
             is_alive = True

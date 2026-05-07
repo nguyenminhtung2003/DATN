@@ -48,5 +48,20 @@ class ConfigDefaultsTest(unittest.TestCase):
             importlib.reload(config)
 
 
+def test_verify_prompt_config_points_to_existing_wav_files():
+    expected = {
+        "prepare_countdown",
+        "success",
+        "failed_identity",
+        "no_face",
+        "no_enrollment",
+    }
+
+    assert set(config.VERIFY_PROMPT_FILES.keys()) == expected
+    for prompt_name, path in config.VERIFY_PROMPT_FILES.items():
+        assert path.endswith(".wav"), prompt_name
+        assert os.path.exists(path), path
+
+
 if __name__ == "__main__":
     unittest.main()

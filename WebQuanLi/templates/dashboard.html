@@ -18,9 +18,9 @@
                     data-vehicle-id="{{ vehicle.id if vehicle else 1 }}"
                     data-monitoring-url="/api/vehicles/{{ vehicle.id if vehicle else 1 }}/monitoring"
                     data-connection-state="{{ connection_status }}"
-                    data-next-monitoring-state="{{ 'disconnect' if connection_status == 'online' else 'connect' }}"
-                    aria-label="{{ 'Kết nối với Jetson. Bấm để ngắt giám sát.' if connection_status == 'online' else 'Mất kết nối với Jetson. Bấm để gửi lệnh kết nối giám sát.' }}"
-                    title="{{ 'Bấm để ngắt giám sát' if connection_status == 'online' else 'Bấm để gửi lệnh kết nối giám sát' }}">
+                    data-next-monitoring-state="connect"
+                    aria-label="{{ 'Ket noi voi Jetson. Bam de bat/dong bo giam sat.' if connection_status == 'online' else 'Mat ket noi voi Jetson. Bam de gui lenh ket noi giam sat.' }}"
+                    title="{{ 'Bam de bat/dong bo giam sat' if connection_status == 'online' else 'Bam de gui lenh ket noi giam sat' }}">
                 {% if connection_status == 'online' %}
                 <span class="status-dot online"></span><span class="connection-text">Kết nối</span>
                 {% else %}
@@ -521,14 +521,14 @@
         if (!badge) return;
         const isOnline = status === 'online';
         badge.dataset.connectionState = isOnline ? 'online' : 'offline';
-        badge.dataset.nextMonitoringState = isOnline ? 'disconnect' : 'connect';
+        badge.dataset.nextMonitoringState = 'connect';
         badge.setAttribute(
             'aria-label',
             isOnline
-                ? 'Kết nối với Jetson. Bấm để ngắt giám sát.'
-                : 'Mất kết nối với Jetson. Bấm để gửi lệnh kết nối giám sát.'
+                ? 'Ket noi voi Jetson. Bam de bat/dong bo giam sat.'
+                : 'Mat ket noi voi Jetson. Bam de gui lenh ket noi giam sat.'
         );
-        badge.title = isOnline ? 'Bấm để ngắt giám sát' : 'Bấm để gửi lệnh kết nối giám sát';
+        badge.title = isOnline ? 'Bam de bat/dong bo giam sat' : 'Bam de gui lenh ket noi giam sat';
         badge.innerHTML = isOnline
             ? '<span class="status-dot online"></span><span class="connection-text">Kết nối</span>'
             : '<span class="status-dot offline"></span><span class="connection-text">Mất kết nối</span>';

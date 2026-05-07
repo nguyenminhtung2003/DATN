@@ -295,6 +295,20 @@ class MainLocalGUITest(unittest.TestCase):
         finally:
             release.set()
 
+    def test_async_status_adapter_reads_hardware_monitor_status_contract(self):
+        from sensors.hardware_monitor import HardwareMonitor
+
+        adapter = AsyncStatusAdapter(HardwareMonitor(), default_status={}, interval_sec=0.0)
+
+        status = adapter.status(force_refresh=True)
+
+        self.assertIn("power", status)
+        self.assertIn("camera_ok", status)
+        self.assertIn("rfid_reader_ok", status)
+        self.assertIn("gps_uart_ok", status)
+        self.assertIn("speaker_output_ok", status)
+        self.assertIn("websocket_ok", status)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -143,6 +143,41 @@ AUDIO_ALERT_LEVEL1 = os.getenv("DROWSIGUARD_AUDIO_ALERT_LEVEL1", os.path.join(os
 AUDIO_ALERT_LEVEL2 = os.getenv("DROWSIGUARD_AUDIO_ALERT_LEVEL2", os.path.join(os.path.dirname(__file__), "sounds", "alert_level2.wav"))
 AUDIO_ALERT_LEVEL3 = os.getenv("DROWSIGUARD_AUDIO_ALERT_LEVEL3", os.path.join(os.path.dirname(__file__), "sounds", "alert_level3.wav"))
 
+# Driver identity verification voice prompts.
+VERIFY_PROMPTS_ENABLED = env_bool("DROWSIGUARD_VERIFY_PROMPTS_ENABLED", True)
+VERIFY_PROMPT_DIR = os.getenv(
+    "DROWSIGUARD_VERIFY_PROMPT_DIR",
+    os.path.join(os.path.dirname(__file__), "wav"),
+)
+VERIFY_PROMPT_PREPARE_COUNTDOWN = os.getenv(
+    "DROWSIGUARD_VERIFY_PROMPT_PREPARE_COUNTDOWN",
+    os.path.join(VERIFY_PROMPT_DIR, "verify_prepare_countdown.wav"),
+)
+VERIFY_PROMPT_SUCCESS = os.getenv(
+    "DROWSIGUARD_VERIFY_PROMPT_SUCCESS",
+    os.path.join(VERIFY_PROMPT_DIR, "verify_success.wav"),
+)
+VERIFY_PROMPT_FAILED_IDENTITY = os.getenv(
+    "DROWSIGUARD_VERIFY_PROMPT_FAILED_IDENTITY",
+    os.path.join(VERIFY_PROMPT_DIR, "verify_failed_identity.wav"),
+)
+VERIFY_PROMPT_NO_FACE = os.getenv(
+    "DROWSIGUARD_VERIFY_PROMPT_NO_FACE",
+    os.path.join(VERIFY_PROMPT_DIR, "verify_no_face.wav"),
+)
+VERIFY_PROMPT_NO_ENROLLMENT = os.getenv(
+    "DROWSIGUARD_VERIFY_PROMPT_NO_ENROLLMENT",
+    os.path.join(VERIFY_PROMPT_DIR, "verify_no_enrollment.wav"),
+)
+VERIFY_PROMPT_WAIT_TIMEOUT_SEC = env_float("DROWSIGUARD_VERIFY_PROMPT_WAIT_TIMEOUT", 8.0)
+VERIFY_PROMPT_FILES = {
+    "prepare_countdown": VERIFY_PROMPT_PREPARE_COUNTDOWN,
+    "success": VERIFY_PROMPT_SUCCESS,
+    "failed_identity": VERIFY_PROMPT_FAILED_IDENTITY,
+    "no_face": VERIFY_PROMPT_NO_FACE,
+    "no_enrollment": VERIFY_PROMPT_NO_ENROLLMENT,
+}
+
 # ─── RFID (USB HID) ───────────────────────────────────────
 RFID_DEVICE_PATH = os.getenv("DROWSIGUARD_RFID_DEVICE_PATH") or None  # e.g. "/dev/input/event3"
 RFID_DEBOUNCE_SEC = 2.0

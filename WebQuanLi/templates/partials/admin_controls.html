@@ -19,26 +19,35 @@
 <div class="admin-section">
     <h4>🔊 Kiểm tra Loa Cảnh Báo Trên Xe</h4>
     <div class="test-buttons">
-        <button hx-post="/api/vehicles/{{ vehicle.id if vehicle else 1 }}/test"
-                hx-vals='{"level": 1, "state": "on"}'
-                hx-swap="outerHTML"
-                class="btn btn-outline-info"
-                id="btn-test-1">
-            ▶ Bật Mức 1
-        </button>
-        <button hx-post="/api/vehicles/{{ vehicle.id if vehicle else 1 }}/test"
-                hx-vals='{"level": 2, "state": "on"}'
-                hx-swap="outerHTML"
-                class="btn btn-outline-warning"
-                id="btn-test-2">
-            ▶ Bật Mức 2
-        </button>
-        <button hx-post="/api/vehicles/{{ vehicle.id if vehicle else 1 }}/test"
-                hx-vals='{"level": 3, "state": "on"}'
-                hx-swap="outerHTML"
-                class="btn btn-outline-danger"
-                id="btn-test-3">
-            ▶ Bật Mức 3
-        </button>
+        <div id="speaker-test-level-1" class="speaker-test-control">
+            <button hx-post="/api/vehicles/{{ vehicle.id if vehicle else 1 }}/test"
+                    hx-vals='{"level": 1, "state": "on"}'
+                    hx-target="#speaker-test-level-1"
+                    hx-swap="outerHTML"
+                    class="btn btn-outline-info"
+                    id="btn-test-1">
+                Bat Muc 1
+            </button>
+        </div>
+        <div id="speaker-test-level-2" class="speaker-test-control">
+            <button hx-post="/api/vehicles/{{ vehicle.id if vehicle else 1 }}/test"
+                    hx-vals='{"level": 2, "state": "on"}'
+                    hx-target="#speaker-test-level-2"
+                    hx-swap="outerHTML"
+                    class="btn btn-outline-warning"
+                    id="btn-test-2">
+                Bat Muc 2
+            </button>
+        </div>
+        <div id="speaker-test-level-3" class="speaker-test-control">
+            <button hx-post="/api/vehicles/{{ vehicle.id if vehicle else 1 }}/test"
+                    hx-vals='{"level": 3, "state": "on"}'
+                    hx-target="#speaker-test-level-3"
+                    hx-swap="outerHTML"
+                    class="btn btn-outline-danger"
+                    id="btn-test-3">
+                Bat Muc 3
+            </button>
+        </div>
     </div>
 </div>

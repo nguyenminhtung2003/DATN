@@ -234,11 +234,11 @@ def test_bluetooth_manager_discovers_connected_speaker_when_mac_is_not_configure
     assert status["connected"] is True
 
 
-def test_speaker_uses_configured_audio_file_and_backend(monkeypatch):
+def test_speaker_uses_configured_audio_file_and_backend(monkeypatch, tmpdir):
     calls = []
-    audio_file = "D:/CodingAntigravity/CodeJetsonNano/Version3/storage/_test_speaker_level2.wav"
-    with open(audio_file, "wb") as fh:
-        fh.write(b"RIFFdemo")
+    audio_file = tmpdir.join("_test_speaker_level2.wav")
+    audio_file.write_binary(b"RIFFdemo")
+    audio_file_path = str(audio_file)
 
     def fake_popen(args):
         calls.append(args)
@@ -255,16 +255,80 @@ def test_speaker_uses_configured_audio_file_and_backend(monkeypatch):
     speaker = Speaker(
         enabled=True,
         backend="paplay",
-        alert_files={2: audio_file},
+        alert_files={2: audio_file_path},
         popen=fake_popen,
     )
-    try:
-        speaker.play_alert(2)
-        speaker.stop()
 
-        assert calls[0] == ["paplay", audio_file]
-        assert calls[1] == ["terminate"]
-        assert speaker.last_level == 2
-    finally:
-        if os.path.exists(audio_file):
-            os.remove(audio_file)
+    speaker.play_alert(2)
+    speaker.stop()
+
+    assert calls[0] == ["paplay", audio_file_path]
+    assert calls[1] == ["terminate"]
+    assert speaker.last_level == 2
+
+
+def test_speaker_plays_named_verify_prompt(monkeypatch, tmpdir):
+    calls = []
+    prompt_file = tmpdir.join("verify_success.wav")
+    prompt_file.write_binary(b"RIFFdemo")
+
+    def fake_popen(args):
+        calls.append(args)
+
+        class Process:
+            def poll(self):
+                return None
+
+            def terminate(self):
+                calls.append(["terminate"])
+
+        return Process()
+
+    speaker = Speaker(
+        enabled=True,
+        backend="paplay",
+        alert_files={},
+        prompt_files={"success": str(prompt_file)},
+        popen=fake_popen,
+    )
+
+    assert speaker.play_prompt("success") is True
+    speaker.stop()
+
+    assert calls[0] == ["paplay", str(prompt_file)]
+    assert calls[1] == ["terminate"]
+    assert speaker.last_prompt == "success"
+
+
+def test_speaker_waits_for_countdown_prompt_when_requested(monkeypatch, tmpdir):
+    calls = []
+    prompt_file = tmpdir.join("verify_prepare_countdown.wav")
+    prompt_file.write_binary(b"RIFFdemo")
+
+    class Process:
+        def poll(self):
+            return None
+
+        def wait(self, timeout=None):
+            calls.append(["wait", timeout])
+            return 0
+
+        def terminate(self):
+            calls.append(["terminate"])
+
+    def fake_popen(args):
+        calls.append(args)
+        return Process()
+
+    speaker = Speaker(
+        enabled=True,
+        backend="aplay",
+        alert_files={},
+        prompt_files={"prepare_countdown": str(prompt_file)},
+        popen=fake_popen,
+    )
+
+    assert speaker.play_prompt("prepare_countdown", wait=True, timeout=8.0) is True
+
+    assert calls[0] == ["aplay", str(prompt_file)]
+    assert calls[1] == ["wait", 8.0]

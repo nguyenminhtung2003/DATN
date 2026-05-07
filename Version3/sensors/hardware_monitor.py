@@ -67,6 +67,10 @@ class HardwareMonitor:
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         }
 
+    def status(self, force_refresh=False) -> dict:
+        """Return hardware status for AsyncStatusAdapter compatibility."""
+        return self.snapshot()
+
     def _check_camera(self) -> bool:
         if self._camera is None:
             return False
