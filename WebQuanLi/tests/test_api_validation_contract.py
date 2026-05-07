@@ -132,7 +132,7 @@ class ApiValidationContractTest(unittest.TestCase):
         self.assertTrue(image_upload.json()["path"].startswith("/static/faces/driver_"))
         self.assertEqual(drivers[0]["face_image_path"], image_upload.json()["path"])
 
-    def test_test_alert_rejects_invalid_level_or_state_and_accepts_valid_form(self):
+    def test_test_alert_rejects_invalid_level_or_state_and_renders_control(self):
         async def run():
             invalid_level = await self._request("POST", "/api/vehicles/1/test", data={"level": "999", "state": "on"})
             invalid_state = await self._request("POST", "/api/vehicles/1/test", data={"level": "1", "state": "start"})
@@ -144,7 +144,82 @@ class ApiValidationContractTest(unittest.TestCase):
         self.assertEqual(invalid_level.status_code, 400)
         self.assertEqual(invalid_state.status_code, 400)
         self.assertEqual(valid.status_code, 200)
+        self.assertIn('id="speaker-test-level-1"', valid.text)
         self.assertIn("hx-post", valid.text)
+
+    def test_test_alert_html_reports_offline_when_websocket_missing(self):
+        async def run():
+            from unittest.mock import AsyncMock, patch
+
+            with patch("app.ws.jetson_handler.manager.send_command", new=AsyncMock()) as send_command, patch.dict(
+                "app.ws.jetson_handler.manager.active",
+                {},
+                clear=True,
+            ):
+                response = await self._request(
+                    "POST",
+                    "/api/vehicles/1/test",
+                    data={"level": "2", "state": "on"},
+                )
+            return response, send_command
+
+        response, send_command = asyncio.run(run())
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('data-speaker-test-sent="false"', response.text)
+        self.assertIn("Jetson dang offline, chua gui duoc lenh test loa", response.text)
+        send_command.assert_not_awaited()
+
+    def test_test_alert_json_reports_offline_when_websocket_missing(self):
+        async def run():
+            from unittest.mock import AsyncMock, patch
+
+            with patch("app.ws.jetson_handler.manager.send_command", new=AsyncMock()) as send_command, patch.dict(
+                "app.ws.jetson_handler.manager.active",
+                {},
+                clear=True,
+            ):
+                response = await self._request(
+                    "POST",
+                    "/api/vehicles/1/test",
+                    data={"level": "2", "state": "on"},
+                    headers={"Accept": "application/json"},
+                )
+            return response, send_command
+
+        response, send_command = asyncio.run(run())
+
+        self.assertEqual(response.status_code, 409)
+        self.assertFalse(response.json()["sent"])
+        self.assertEqual(response.json()["connection_status"], "offline")
+        self.assertEqual(response.json()["message"], "Jetson dang offline, chua gui duoc lenh test loa")
+        send_command.assert_not_awaited()
+
+    def test_test_alert_sends_command_when_websocket_active(self):
+        async def run():
+            from unittest.mock import AsyncMock, patch
+
+            with patch("app.ws.jetson_handler.manager.send_command", new=AsyncMock()) as send_command, patch.dict(
+                "app.ws.jetson_handler.manager.active",
+                {"jetson-nano-001": object()},
+                clear=True,
+            ):
+                response = await self._request(
+                    "POST",
+                    "/api/vehicles/1/test",
+                    data={"level": "3", "state": "on"},
+                )
+            return response, send_command
+
+        response, send_command = asyncio.run(run())
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('data-speaker-test-sent="true"', response.text)
+        self.assertIn("Da gui lenh test loa muc 3", response.text)
+        send_command.assert_awaited_once()
+        device_id, command = send_command.await_args.args
+        self.assertEqual(device_id, "jetson-nano-001")
+        self.assertEqual(command, {"action": "test_alert", "level": 3, "state": "on"})
 
     def test_vehicle_and_driver_payloads_reject_invalid_identifiers(self):
         async def run():
@@ -183,6 +258,25 @@ class ApiValidationContractTest(unittest.TestCase):
         self.assertEqual(payload.rfid, "RFID-ALIAS")
         self.assertEqual(payload.name, "Tai xe A")
 
+    def test_alert_data_accepts_legacy_confidence_aliases(self):
+        from app.schemas import AlertData
+
+        payload = AlertData(
+            level="DANGER",
+            confidence=0.91,
+            reason="classifier",
+        )
+
+        self.assertEqual(payload.ai_confidence, 0.91)
+        self.assertEqual(payload.ai_reason, "classifier")
+
+    def test_driver_data_accepts_rfid_tag_alias(self):
+        from app.schemas import DriverData
+
+        payload = DriverData(name="Nguyen Van A", rfid_tag="UID-123")
+
+        self.assertEqual(payload.rfid, "UID-123")
+
     def test_hardware_ws_schema_accepts_explicit_device_status_fields(self):
         from app.schemas import HardwareData
 
@@ -207,6 +301,13 @@ class ApiValidationContractTest(unittest.TestCase):
         self.assertFalse(payload.bluetooth_speaker_connected)
         self.assertTrue(payload.speaker_output_ok)
         self.assertEqual(payload.queue_pending, 3)
+
+    def test_hardware_ws_schema_rejects_payload_without_status_fields(self):
+        from pydantic import ValidationError
+        from app.schemas import HardwareData
+
+        with self.assertRaises(ValidationError):
+            HardwareData(queue_pending=1)
 
     def test_ws_command_schema_accepts_monitoring_controls(self):
         from app.schemas import WsCommandOut
@@ -266,7 +367,7 @@ class ApiValidationContractTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["state"], "connect")
-        self.assertEqual(response.json()["next_state"], "disconnect")
+        self.assertEqual(response.json()["next_state"], "connect")
         self.assertEqual(response.json()["connection_status"], "online")
         self.assertEqual(response.json()["message"], "Da gui lenh ket noi giam sat")
         send_command.assert_awaited_once()

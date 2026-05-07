@@ -75,12 +75,47 @@ def _monitoring_payload(device_id: str | None, state: str, message: str, sent: b
         }
     return {
         "state": state,
-        "next_state": "disconnect" if state == "connect" else "connect",
+        "next_state": "connect",
         "connection_status": "online",
         "device_id": device_id,
         "message": message,
         "sent": True,
     }
+
+
+def _test_alert_payload(device_id: str | None, level: int, state: str, message: str, sent: bool) -> dict:
+    return {
+        "level": level,
+        "state": state,
+        "next_state": "off" if state == "on" else "on",
+        "connection_status": "online" if sent else "offline",
+        "device_id": device_id,
+        "message": message,
+        "sent": bool(sent),
+    }
+
+
+def _test_alert_button_html(vehicle_id: int, level: int, state: str, message: str | None = None, sent: bool | None = None) -> str:
+    next_state = "off" if state == "on" else "on"
+    level_labels = {1: "info", 2: "warning", 3: "danger"}
+    level_names = {1: "Muc 1", 2: "Muc 2", 3: "Muc 3"}
+    btn_class = level_labels.get(level, "info")
+    active_class = f"btn btn-{btn_class} active" if state == "on" else f"btn btn-outline-{btn_class}"
+    label = f"Tat {level_names[level]}" if state == "on" else f"Bat {level_names[level]}"
+    status = ""
+    sent_attr = "" if sent is None else f' data-speaker-test-sent="{str(bool(sent)).lower()}"'
+    if message:
+        status_class = "alert-success" if sent else "alert-warning"
+        status = f'<div class="{status_class}" id="speaker-test-status-{level}">{message}</div>'
+    return (
+        f'<div id="speaker-test-level-{level}" class="speaker-test-control"{sent_attr}>'
+        f'<button hx-post="/api/vehicles/{vehicle_id}/test" '
+        f'hx-vals=\'{{"level": {level}, "state": "{next_state}"}}\' '
+        f'hx-target="#speaker-test-level-{level}" hx-swap="outerHTML" '
+        f'class="{active_class}">{label}</button>'
+        f'{status}'
+        f'</div>'
+    )
 
 
 def _wants_json(request: Request) -> bool:
@@ -217,32 +252,26 @@ async def test_alert(
     if not vehicle:
         raise HTTPException(status_code=404, detail="Xe khong tim thay")
 
-    if vehicle.device_id and vehicle.device_id in manager.active:
-        await manager.send_command(vehicle.device_id, {
-            "action": "test_alert",
-            "level": level,
-            "state": state,
-        })
-
-    new_state = "off" if state == "on" else "on"
-    level_labels = {1: "info", 2: "warning", 3: "danger"}
-    level_names = {1: "Muc 1", 2: "Muc 2", 3: "Muc 3"}
-    btn_class = level_labels.get(level, "info")
-
-    if state == "on":
+    if not vehicle.device_id or vehicle.device_id not in manager.active:
+        message = "Jetson dang offline, chua gui duoc lenh test loa"
+        if _wants_json(request):
+            return JSONResponse(
+                _test_alert_payload(vehicle.device_id, level, state, message, sent=False),
+                status_code=409,
+            )
         return HTMLResponse(
-            f'<button hx-post="/api/vehicles/{vehicle_id}/test" '
-            f'hx-vals=\'{{"level": {level}, "state": "{new_state}"}}\' '
-            f'hx-swap="outerHTML" '
-            f'class="btn btn-{btn_class} active">Tat {level_names[level]}</button>'
+            _test_alert_button_html(vehicle.id, level, "off", message=message, sent=False)
         )
 
-    return HTMLResponse(
-        f'<button hx-post="/api/vehicles/{vehicle_id}/test" '
-        f'hx-vals=\'{{"level": {level}, "state": "{new_state}"}}\' '
-        f'hx-swap="outerHTML" '
-        f'class="btn btn-outline-{btn_class}">Bat {level_names[level]}</button>'
-    )
+    await manager.send_command(vehicle.device_id, {
+        "action": "test_alert",
+        "level": level,
+        "state": state,
+    })
+    message = f"Da gui lenh test loa muc {level}" if state == "on" else f"Da gui lenh tat test loa muc {level}"
+    if _wants_json(request):
+        return JSONResponse(_test_alert_payload(vehicle.device_id, level, state, message, sent=True))
+    return HTMLResponse(_test_alert_button_html(vehicle.id, level, state, message=message, sent=True))
 
 
 @router.post("/vehicles/{vehicle_id}/test-alert-log")

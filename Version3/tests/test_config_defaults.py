@@ -49,9 +49,6 @@ class ConfigDefaultsTest(unittest.TestCase):
 
 
 def test_verify_prompt_config_points_to_existing_wav_files():
-    import os
-    import config
-
     expected = {
         "prepare_countdown",
         "success",

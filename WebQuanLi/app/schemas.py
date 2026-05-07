@@ -1,7 +1,36 @@
 import re
 from datetime import datetime
-from typing import Any, Dict, Literal, Optional
-from pydantic import AliasChoices, BaseModel, Field, field_validator
+from typing import Any, Dict, Optional, Pattern
+
+try:
+    from typing import Literal
+except ImportError:
+    from typing_extensions import Literal
+
+from pydantic import BaseModel as PydanticBaseModel
+from pydantic import Field
+
+try:
+    from pydantic import field_validator, model_validator
+except ImportError:
+    from pydantic import root_validator
+    from pydantic import validator as pydantic_field_validator
+
+    def field_validator(*fields, **kwargs):
+        kwargs.setdefault("allow_reuse", True)
+        return pydantic_field_validator(*fields, **kwargs)
+
+    def model_validator(*, mode):
+        return root_validator(pre=(mode == "before"), allow_reuse=True)
+
+
+if hasattr(PydanticBaseModel, "model_dump"):
+    class BaseModel(PydanticBaseModel):
+        pass
+else:
+    class BaseModel(PydanticBaseModel):
+        def model_dump(self, *args, **kwargs):
+            return self.dict(*args, **kwargs)
 
 
 PLATE_RE = re.compile(r"^[A-Z0-9][A-Z0-9 .-]{3,19}$", re.IGNORECASE)
@@ -9,6 +38,36 @@ DEVICE_RE = re.compile(r"^[A-Z0-9_.:-]{3,50}$", re.IGNORECASE)
 RFID_RE = re.compile(r"^[A-Z0-9_.:-]{1,50}$", re.IGNORECASE)
 PHONE_RE = re.compile(r"^\+?\d{8,15}$")
 GENDER_VALUES = {"nam", "nu", "nữ", "khac", "khác", "male", "female", "other"}
+HARDWARE_STATUS_KEYS = {
+    "power",
+    "cellular",
+    "gps",
+    "camera",
+    "rfid",
+    "speaker",
+    "camera_ok",
+    "rfid_reader_ok",
+    "gps_uart_ok",
+    "gps_fix_ok",
+    "bluetooth_adapter_ok",
+    "bluetooth_speaker_connected",
+    "speaker_output_ok",
+    "websocket_ok",
+}
+
+
+def _normalize_aliases(values, aliases):
+    if not isinstance(values, dict):
+        return values
+    values = dict(values)
+    for target, source_names in aliases.items():
+        if target in values:
+            continue
+        for source_name in source_names:
+            if source_name in values:
+                values[target] = values[source_name]
+                break
+    return values
 
 
 def _strip_optional(value: Optional[str]) -> Optional[str]:
@@ -18,7 +77,7 @@ def _strip_optional(value: Optional[str]) -> Optional[str]:
     return value or None
 
 
-def _validate_pattern(value: Optional[str], pattern: re.Pattern, field_name: str) -> Optional[str]:
+def _validate_pattern(value: Optional[str], pattern: Pattern, field_name: str) -> Optional[str]:
     value = _strip_optional(value)
     if value is None:
         return None
@@ -174,6 +233,15 @@ class HardwareData(BaseModel):
     last_seen: Optional[str] = None
     details: Dict[str, Any] = Field(default_factory=dict)
 
+    @model_validator(mode="before")
+    @classmethod
+    def require_status_fields(cls, values):
+        if not isinstance(values, dict):
+            return values
+        if not any(key in values for key in HARDWARE_STATUS_KEYS):
+            raise ValueError("hardware payload missing device status fields")
+        return values
+
     @staticmethod
     def _coalesce(explicit: Optional[bool], legacy: bool) -> bool:
         return bool(legacy if explicit is None else explicit)
@@ -219,19 +287,24 @@ class AlertData(BaseModel):
     pitch: Optional[float] = None
     perclos: Optional[float] = None
     ai_state: Optional[str] = None
-    ai_confidence: Optional[float] = Field(
-        default=None,
-        validation_alias=AliasChoices("ai_confidence", "confidence"),
-    )
-    ai_reason: Optional[str] = Field(
-        default=None,
-        validation_alias=AliasChoices("ai_reason", "reason"),
-    )
+    ai_confidence: Optional[float] = None
+    ai_reason: Optional[str] = None
     lat: Optional[float] = None
     lng: Optional[float] = None
     speed: Optional[float] = None
     gps_fix_ok: Optional[bool] = None
     timestamp: Optional[float] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_aliases(cls, values):
+        return _normalize_aliases(
+            values,
+            {
+                "ai_confidence": ("confidence",),
+                "ai_reason": ("reason",),
+            },
+        )
 
 
 class FaceMismatchData(BaseModel):
@@ -264,7 +337,12 @@ class AlertFilter(BaseModel):
 
 class DriverData(BaseModel):
     name: Optional[str] = None
-    rfid: str = Field(validation_alias=AliasChoices("rfid", "rfid_tag"))
+    rfid: str
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_aliases(cls, values):
+        return _normalize_aliases(values, {"rfid": ("rfid_tag",)})
 
 
 class VerifyErrorData(BaseModel):

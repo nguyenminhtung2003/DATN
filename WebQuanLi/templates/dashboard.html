@@ -18,9 +18,9 @@
                     data-vehicle-id="{{ vehicle.id if vehicle else 1 }}"
                     data-monitoring-url="/api/vehicles/{{ vehicle.id if vehicle else 1 }}/monitoring"
                     data-connection-state="{{ connection_status }}"
-                    data-next-monitoring-state="{{ 'disconnect' if connection_status == 'online' else 'connect' }}"
-                    aria-label="{{ 'Kết nối với Jetson. Bấm để ngắt giám sát.' if connection_status == 'online' else 'Mất kết nối với Jetson. Bấm để gửi lệnh kết nối giám sát.' }}"
-                    title="{{ 'Bấm để ngắt giám sát' if connection_status == 'online' else 'Bấm để gửi lệnh kết nối giám sát' }}">
+                    data-next-monitoring-state="connect"
+                    aria-label="{{ 'Ket noi voi Jetson. Bam de bat/dong bo giam sat.' if connection_status == 'online' else 'Mat ket noi voi Jetson. Bam de gui lenh ket noi giam sat.' }}"
+                    title="{{ 'Bam de bat/dong bo giam sat' if connection_status == 'online' else 'Bam de gui lenh ket noi giam sat' }}">
                 {% if connection_status == 'online' %}
                 <span class="status-dot online"></span><span class="connection-text">Kết nối</span>
                 {% else %}
@@ -355,6 +355,34 @@
         </div>`;
     }
 
+    const ALERT_LOG_LIMIT = 10;
+
+    function refreshAlertCount() {
+        const tbody = document.getElementById('alert-log-body');
+        const count = document.getElementById('alert-count');
+        if (!tbody || !count) return;
+        count.textContent = String(tbody.querySelectorAll('tr.alert-row').length);
+    }
+
+    function trimAlertRows() {
+        const tbody = document.getElementById('alert-log-body');
+        if (!tbody) return;
+        const rows = Array.from(tbody.querySelectorAll('tr.alert-row'));
+        rows.slice(ALERT_LOG_LIMIT).forEach(row => row.remove());
+        refreshAlertCount();
+    }
+
+    function prependAlertRow(row) {
+        const tbody = document.getElementById('alert-log-body');
+        if (!tbody) return;
+        const emptyRow = tbody.querySelector('td[colspan="6"]');
+        if (emptyRow && emptyRow.parentElement) {
+            emptyRow.parentElement.remove();
+        }
+        tbody.insertBefore(row, tbody.firstChild);
+        trimAlertRows();
+    }
+
     // Alert row
     function addAlertRow(data) {
         const tbody = document.getElementById('alert-log-body');
@@ -367,11 +395,7 @@
         <td>${data.ear ? data.ear.toFixed(2) : '—'}</td>
         <td>${data.mar ? data.mar.toFixed(2) : '—'}</td>
         <td>Cảnh báo buồn ngủ</td>`;
-        tbody.insertBefore(row, tbody.firstChild);
-        // Update count
-        const count = document.getElementById('alert-count');
-        count.textContent = parseInt(count.textContent) + 1;
-        // Flash animation
+        prependAlertRow(row);
         setTimeout(() => row.classList.remove('alert-new'), 2000);
     }
 
@@ -387,8 +411,7 @@
         <td>—</td>
         <td>—</td>
         <td>RFID: ${data.rfid_tag} | Dự kiến: ${data.expected}</td>`;
-        tbody.insertBefore(row, tbody.firstChild);
-        // Trigger red flash on entire page
+        prependAlertRow(row);
         document.body.classList.add('mismatch-flash');
         setTimeout(() => document.body.classList.remove('mismatch-flash'), 3000);
     }
@@ -405,12 +428,7 @@
         <td>—</td>
         <td>—</td>
         <td>Lỗi xác thực (RFID: ${data.rfid_tag}): ${data.reason}</td>`;
-        tbody.insertBefore(row, tbody.firstChild);
-
-        // Update count
-        const count = document.getElementById('alert-count');
-        count.textContent = parseInt(count.textContent) + 1;
-        // Flash animation
+        prependAlertRow(row);
         setTimeout(() => row.classList.remove('alert-new'), 2000);
     }
 
@@ -503,14 +521,14 @@
         if (!badge) return;
         const isOnline = status === 'online';
         badge.dataset.connectionState = isOnline ? 'online' : 'offline';
-        badge.dataset.nextMonitoringState = isOnline ? 'disconnect' : 'connect';
+        badge.dataset.nextMonitoringState = 'connect';
         badge.setAttribute(
             'aria-label',
             isOnline
-                ? 'Kết nối với Jetson. Bấm để ngắt giám sát.'
-                : 'Mất kết nối với Jetson. Bấm để gửi lệnh kết nối giám sát.'
+                ? 'Ket noi voi Jetson. Bam de bat/dong bo giam sat.'
+                : 'Mat ket noi voi Jetson. Bam de gui lenh ket noi giam sat.'
         );
-        badge.title = isOnline ? 'Bấm để ngắt giám sát' : 'Bấm để gửi lệnh kết nối giám sát';
+        badge.title = isOnline ? 'Bam de bat/dong bo giam sat' : 'Bam de gui lenh ket noi giam sat';
         badge.innerHTML = isOnline
             ? '<span class="status-dot online"></span><span class="connection-text">Kết nối</span>'
             : '<span class="status-dot offline"></span><span class="connection-text">Mất kết nối</span>';

@@ -177,6 +177,38 @@ def test_eyes_closed_becomes_level1_after_0_8s():
     assert result["durations"]["eyes_closed_sec"] >= 0.8
 
 
+def test_rapid_blink_burst_does_not_trigger_long_perclos_drowsy():
+    classifier = DrowsinessClassifier(profile=profile(ear=0.24), target_fps=10)
+
+    # 40% closed samples over 3 seconds, but each closure is only 0.4s.
+    # This reproduces fast-blink/noise accumulation without sustained eye closure.
+    blink_burst = [0.20, 0.20, 0.20, 0.20, 0.29, 0.29, 0.29, 0.29, 0.29, 0.29]
+    result = None
+    for _ in range(3):
+        for ear in blink_burst:
+            result = classifier.update(metrics(ear=ear, mar=0.12, pitch=0.0))
+
+    assert result["state"] == AIState.NORMAL
+    assert result["alert_hint"] == 0
+    assert "Long PERCLOS" not in result["reason"]
+
+
+def test_sustained_high_perclos_after_window_still_triggers_drowsy():
+    classifier = DrowsinessClassifier(profile=profile(ear=0.24), target_fps=10)
+
+    # 60% closed samples over 8 seconds, but no single closure reaches 0.8s.
+    # This preserves the intended long-PERCLOS fatigue behavior.
+    high_perclos_pattern = [0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.29, 0.29, 0.29, 0.29]
+    result = None
+    for _ in range(8):
+        for ear in high_perclos_pattern:
+            result = classifier.update(metrics(ear=ear, mar=0.12, pitch=0.0))
+
+    assert result["state"] == AIState.DROWSY
+    assert result["alert_hint"] == 2
+    assert "Long PERCLOS" in result["reason"]
+
+
 def test_yawn_after_one_second_of_high_mar():
     classifier = DrowsinessClassifier(profile=profile(mar=0.45), target_fps=10)
 
@@ -273,7 +305,7 @@ def test_stale_long_perclos_does_not_keep_drowsy_after_stable_open_eyes():
 def test_recent_closed_eyes_can_still_use_long_perclos_for_fatigue():
     classifier = DrowsinessClassifier(profile=profile(ear=0.24), target_fps=10)
 
-    for _ in range(7):
+    for _ in range(20):
         for _ in range(3):
             result = classifier.update(metrics(ear=0.20, mar=0.12, pitch=0.0))
         result = classifier.update(metrics(ear=0.29, mar=0.12, pitch=0.0))
@@ -281,7 +313,7 @@ def test_recent_closed_eyes_can_still_use_long_perclos_for_fatigue():
     assert result["state"] == AIState.DROWSY
     assert result["alert_hint"] == 2
     assert result["durations"]["eyes_closed_sec"] == 0.0
-    assert result["features"]["perclos_long"] >= 0.35
+    assert result["features"]["perclos_long"] >= config.PERCLOS_THRESHOLD
     assert result["features"]["perclos_gate_active"] is True
 
 

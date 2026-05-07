@@ -1,5 +1,6 @@
 import ast
 import re
+import sys
 from pathlib import Path
 
 
@@ -16,10 +17,11 @@ def iter_project_python_files():
 
 def test_project_sources_parse_as_python36():
     failures = []
+    parse_kwargs = {"feature_version": (3, 6)} if sys.version_info >= (3, 8) else {}
     for path in iter_project_python_files():
         source = path.read_text(encoding="utf-8")
         try:
-            ast.parse(source, filename=str(path), feature_version=(3, 6))
+            ast.parse(source, filename=str(path), **parse_kwargs)
         except SyntaxError as exc:
             failures.append(f"{path.relative_to(PROJECT_ROOT)}:{exc.lineno}: {exc.msg}")
 

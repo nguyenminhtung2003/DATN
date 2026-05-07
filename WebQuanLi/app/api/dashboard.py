@@ -5,6 +5,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.config import settings
 from app.database import get_db
@@ -131,7 +132,9 @@ async def dashboard_page(
     active_session = None
     if vehicle:
         sess_result = await db.execute(
-            select(DriverSession).where(
+            select(DriverSession)
+            .options(selectinload(DriverSession.driver))
+            .where(
                 DriverSession.vehicle_id == vehicle.id,
                 DriverSession.checkout_at.is_(None),
             )
@@ -140,7 +143,7 @@ async def dashboard_page(
 
     # Get recent alerts
     alerts_result = await db.execute(
-        select(SystemAlert).order_by(SystemAlert.timestamp.desc()).limit(20)
+        select(SystemAlert).order_by(SystemAlert.timestamp.desc()).limit(10)
     )
     recent_alerts = alerts_result.scalars().all()
 

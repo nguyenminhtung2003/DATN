@@ -260,10 +260,13 @@ class DrowsinessClassifier:
         if head_down_sec >= 1.0:
             return AIState.HEAD_DOWN, 0.82, "Head down for %.1fs" % head_down_sec, 1
 
+        perclos_alert_threshold = float(getattr(config, "PERCLOS_THRESHOLD", 0.55))
+        perclos_window_sec = float(getattr(config, "PERCLOS_WINDOW", 8.0) or 8.0)
+        min_perclos_samples = max(5, int(perclos_window_sec * self._target_fps))
         if (
             perclos_gate_active
-            and perclos_long >= 0.35
-            and len(self._perclos_long) >= max(5, int(2.0 * self._target_fps))
+            and perclos_long >= perclos_alert_threshold
+            and len(self._perclos_long) >= min_perclos_samples
         ):
             return AIState.DROWSY, 0.90, "Long PERCLOS %.2f indicates fatigue" % perclos_long, 2
 

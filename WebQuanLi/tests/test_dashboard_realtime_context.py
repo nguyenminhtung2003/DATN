@@ -4,17 +4,20 @@ import uuid
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import inspect as sqlalchemy_inspect, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.auth.dependencies import get_current_user
+from app.api import dashboard as dashboard_module
 from app.core.event_bus import event_bus
 from app.database import Base, get_db
 from app.main import app
-from app.models import AlertLevel, AlertType, SystemAlert, User, Vehicle
+from app.models import AlertLevel, AlertType, Driver, DriverSession, SystemAlert, User, Vehicle
 from app.ws.jetson_handler import manager
 
 
@@ -69,8 +72,31 @@ class DashboardRealtimeContextTest(unittest.TestCase):
             ))
             await db.commit()
 
-    async def _request(self, method, path, **kwargs):
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+    async def _seed_active_session(self):
+        async with self.session_factory() as db:
+            vehicle_result = await db.execute(select(Vehicle).where(Vehicle.device_id == self.device_id))
+            vehicle = vehicle_result.scalar_one()
+            driver = Driver(
+                name="Nguyen Van A",
+                age=35,
+                gender="Nam",
+                phone="0909999999",
+                rfid_tag="RFID-ACTIVE",
+                face_image_path="/static/faces/driver-active.jpg",
+                vehicle_id=vehicle.id,
+            )
+            db.add(driver)
+            await db.flush()
+            db.add(DriverSession(
+                vehicle_id=vehicle.id,
+                driver_id=driver.id,
+                checkin_at=datetime(2026, 4, 28, 1, 2, 3, tzinfo=timezone.utc),
+            ))
+            await db.commit()
+
+    async def _request(self, method, path, raise_app_exceptions=True, **kwargs):
+        transport = ASGITransport(app=app, raise_app_exceptions=raise_app_exceptions)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
             return await client.request(method, path, **kwargs)
 
     def test_dashboard_renders_cached_queue_gps_and_last_seen(self):
@@ -101,7 +127,7 @@ class DashboardRealtimeContextTest(unittest.TestCase):
         self.assertIn('<button class="connection-badge"', response.text)
         self.assertIn('id="connection-status"', response.text)
         self.assertIn('data-connection-state="online"', response.text)
-        self.assertIn('data-next-monitoring-state="disconnect"', response.text)
+        self.assertIn('data-next-monitoring-state="connect"', response.text)
         hardware_section = response.text.split('<div class="hardware-grid" id="hardware-badges">', 1)[1].split("</section>", 1)[0]
         self.assertEqual(hardware_section.count('data-hw-key="'), 5)
         self.assertIn('data-hw-key="power"', hardware_section)
@@ -138,6 +164,33 @@ class DashboardRealtimeContextTest(unittest.TestCase):
         self.assertIn('data-connection-state="offline"', response.text)
         self.assertIn('data-next-monitoring-state="connect"', response.text)
 
+    def test_dashboard_eager_loads_active_session_driver_for_template(self):
+        asyncio.run(self._seed_active_session())
+
+        async def run():
+            captured_context = {}
+
+            def fake_template_response(*args, **kwargs):
+                captured_context.update(kwargs["context"])
+
+                class Response:
+                    status_code = 200
+
+                return Response()
+
+            async with self.session_factory() as db:
+                with patch.object(dashboard_module.templates, "TemplateResponse", side_effect=fake_template_response):
+                    response = await dashboard_module.dashboard_page(request=object(), user=self.admin, db=db)
+            return response, captured_context
+
+        response, context = asyncio.run(run())
+        active_session = context["active_session"]
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNotNone(active_session)
+        self.assertNotIn("driver", sqlalchemy_inspect(active_session).unloaded)
+        self.assertEqual(active_session.driver.name, "Nguyen Van A")
+
     def test_dashboard_uses_eventsource_without_twenty_second_offline_watchdog(self):
         response = asyncio.run(self._request("GET", "/"))
 
@@ -159,3 +212,42 @@ class DashboardRealtimeContextTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("00:13:30 - 28/04/2026", response.text)
         self.assertNotIn("17:13:30", response.text)
+
+    def test_dashboard_alert_log_is_capped_to_ten_latest_alerts(self):
+        async def seed_many_alerts():
+            async with self.session_factory() as db:
+                vehicle_result = await db.execute(select(Vehicle).where(Vehicle.device_id == self.device_id))
+                vehicle = vehicle_result.scalar_one()
+                for index in range(12):
+                    db.add(SystemAlert(
+                        vehicle_id=vehicle.id,
+                        alert_type=AlertType.DROWSINESS,
+                        alert_level=AlertLevel.LEVEL_1,
+                        ear_value=0.20,
+                        mar_value=0.10,
+                        message=f"alert cap {index:02d}",
+                        timestamp=datetime(2026, 5, 6, 12, index, 0, tzinfo=timezone.utc),
+                    ))
+                await db.commit()
+
+        asyncio.run(seed_many_alerts())
+
+        response = asyncio.run(self._request("GET", "/"))
+        alert_section = response.text.split('id="alert-section"', 1)[1].split("</section>", 1)[0]
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(alert_section.count('class="alert-row'), 10)
+        self.assertIn("alert cap 11", alert_section)
+        self.assertIn("alert cap 02", alert_section)
+        self.assertNotIn("alert cap 01", alert_section)
+        self.assertNotIn("alert cap 00", alert_section)
+        self.assertIn('id="alert-count">10', alert_section.replace("\n", ""))
+
+    def test_dashboard_realtime_alert_insert_trims_rows_to_ten(self):
+        response = asyncio.run(self._request("GET", "/"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("const ALERT_LOG_LIMIT = 10;", response.text)
+        self.assertIn("function trimAlertRows()", response.text)
+        self.assertIn("rows.slice(ALERT_LOG_LIMIT).forEach(row => row.remove());", response.text)
+        self.assertIn("refreshAlertCount();", response.text)

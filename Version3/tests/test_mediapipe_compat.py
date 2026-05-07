@@ -1,6 +1,23 @@
+import builtins
 import types
 
 import camera.face_analyzer as face_analyzer
+
+
+def test_optional_mediapipe_import_handles_broken_protobuf(monkeypatch):
+    original_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):
+        if name == "mediapipe":
+            raise AttributeError("module 'google.protobuf.descriptor' has no attribute '_internal_create_key'")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+
+    mp, error = face_analyzer._import_optional_mediapipe()
+
+    assert mp is None
+    assert isinstance(error, AttributeError)
 
 
 def test_face_analyzer_retries_without_refine_landmarks_for_old_mediapipe(monkeypatch):
