@@ -47,7 +47,7 @@ async def simulate():
                     }))
 
             # Chờ lệnh test từ Dashboard để báo hiệu hai chiều hoạt động tốt
-            print("\n[*] Đang lắng nghe Lệnh điều khiển (Test/OTA) từ Web Admin trong 30 giây...")
+            print("\n[*] Dang lang nghe lenh test canh bao tu Web Admin trong 30 giay...")
             for _ in range(30):
                 try:
                     response = await asyncio.wait_for(ws.recv(), timeout=1.0)
@@ -56,17 +56,6 @@ async def simulate():
                     
                     if cmd.get("action") == "test_alert":
                         print("         (Kích hoạt còi báo động mức độ: " + cmd.get("level", "") + ")")
-                    elif cmd.get("action") == "update_software":
-                        print("         (Bắt đầu tải bản cập nhật OTA từ web)")
-                        await ws.send(json.dumps({
-                            "type": "ota_status",
-                            "data": {"status": "downloading", "progress": 50}
-                        }))
-                        await asyncio.sleep(1)
-                        await ws.send(json.dumps({
-                            "type": "ota_status",
-                            "data": {"status": "success", "progress": 100}
-                        }))
                 except asyncio.TimeoutError:
                     pass
             

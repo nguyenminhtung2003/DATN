@@ -225,15 +225,6 @@
             updateConnectionStatus(data.status);
             return;
         }
-        if (type === 'ota_status') {
-            markLastSeenNow();
-            const el = document.getElementById('upload-status');
-            if (el) {
-                el.innerHTML = data.status === 'APPLIED'
-                    ? '<div class="alert-success">✅ Cập nhật thành công: ' + data.filename + '</div>'
-                    : '<div class="alert-danger">❌ Cập nhật thất bại: ' + (data.error || data.filename) + '</div>';
-            }
-        }
     }
 
     function initDashboardEventSource() {
@@ -249,7 +240,6 @@
         dashboardEventSource.addEventListener('session_start', (event) => handleRealtimeEvent('session_start', parseRealtimePayload(event)));
         dashboardEventSource.addEventListener('session_end', (event) => handleRealtimeEvent('session_end', parseRealtimePayload(event)));
         dashboardEventSource.addEventListener('connection', (event) => handleRealtimeEvent('connection', parseRealtimePayload(event)));
-        dashboardEventSource.addEventListener('ota_status', (event) => handleRealtimeEvent('ota_status', parseRealtimePayload(event)));
     }
 
     async function sendMonitoringCommand() {

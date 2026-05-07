@@ -154,6 +154,8 @@ class DashboardRealtimeContextTest(unittest.TestCase):
         self.assertNotIn('id="ota-file-input"', response.text)
         self.assertNotIn('id="btn-upload"', response.text)
         self.assertNotIn('id="upload-status"', response.text)
+        self.assertNotIn("handleRealtimeEvent('ota_status'", response.text)
+        self.assertNotIn("addEventListener('ota_status'", response.text)
         self.assertIn('id="btn-test-1"', response.text)
         self.assertIn('id="btn-test-2"', response.text)
         self.assertIn('id="btn-test-3"', response.text)
