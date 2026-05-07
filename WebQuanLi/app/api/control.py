@@ -1,50 +1,18 @@
-import hashlib
-import io
-import re
-import zipfile
-
-import aiofiles
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import check_admin
-from app.config import settings
 from app.core.event_bus import event_bus
 from app.database import get_db
-from app.models import AlertLevel, AlertType, OtaAuditLog, SystemAlert, User, Vehicle
+from app.models import AlertLevel, AlertType, SystemAlert, User, Vehicle
 from app.schemas import WsCommandOut
 from app.ws.jetson_handler import manager
 
 router = APIRouter(prefix="/api", tags=["control"])
 
-SAFE_UPDATE_FILENAME_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
-ALLOWED_UPDATE_SUFFIXES = {".py", ".zip"}
-
-
-def _sanitize_update_filename(filename: str | None) -> str:
-    if not filename:
-        raise HTTPException(status_code=400, detail="Invalid filename")
-    if "/" in filename or "\\" in filename or ".." in filename:
-        raise HTTPException(status_code=400, detail="Invalid filename")
-    if not SAFE_UPDATE_FILENAME_RE.fullmatch(filename):
-        raise HTTPException(status_code=400, detail="Invalid filename")
-    suffix = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
-    if suffix not in ALLOWED_UPDATE_SUFFIXES:
-        raise HTTPException(status_code=400, detail="Chi cho phep file .py hoac .zip")
-    return filename
-
-
-def _validate_update_package(filename: str, content: bytes):
-    if filename.endswith(".py"):
-        return
-    try:
-        with zipfile.ZipFile(io.BytesIO(content)) as archive:
-            if "manifest.json" not in archive.namelist():
-                raise HTTPException(status_code=400, detail="Package OTA phai co manifest.json")
-    except zipfile.BadZipFile:
-        raise HTTPException(status_code=400, detail="Package OTA khong phai zip hop le")
+OTA_DISABLED_MESSAGE = "OTA da bi vo hieu hoa. Cap nhat Jetson qua NoMachine/SSH."
 
 
 def _monitoring_button_html(vehicle_id: int, state: str, message: str, is_warning: bool = False) -> str:
@@ -172,61 +140,9 @@ async def set_monitoring_state(
 @router.post("/vehicles/{vehicle_id}/update")
 async def upload_ota_code(
     vehicle_id: int,
-    request: Request,
-    file: UploadFile = File(...),
-    db: AsyncSession = Depends(get_db),
     user: User = Depends(check_admin),
 ):
-    filename = _sanitize_update_filename(file.filename)
-
-    result = await db.execute(select(Vehicle).where(Vehicle.id == vehicle_id))
-    vehicle = result.scalar_one_or_none()
-    if not vehicle:
-        raise HTTPException(status_code=404, detail="Xe khong tim thay")
-
-    settings.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-
-    content = await file.read()
-    _validate_update_package(filename, content)
-    checksum = hashlib.sha256(content).hexdigest()
-    filepath = settings.UPLOAD_DIR / filename
-
-    async with aiofiles.open(str(filepath), "wb") as f:
-        await f.write(content)
-
-    base_url = str(request.base_url).rstrip("/")
-    download_url = f"{base_url}/static/updates/{filename}"
-
-    status = "stored_offline"
-    if vehicle.device_id and vehicle.device_id in manager.active:
-        await manager.send_command(vehicle.device_id, {
-            "action": "update_software",
-            "download_url": download_url,
-            "filename": filename,
-            "checksum": checksum,
-        })
-        status = "sent"
-
-    db.add(OtaAuditLog(
-        vehicle_id=vehicle.id,
-        username=user.username,
-        filename=filename,
-        checksum=checksum,
-        status=status,
-        message=f"OTA file saved to {filepath.name}",
-    ))
-    await db.commit()
-
-    if status == "sent":
-        return HTMLResponse(
-            f'<div class="alert-success" id="upload-status">'
-            f'File <strong>{filename}</strong> da gui den Jetson. Dang cap nhat...</div>'
-        )
-
-    return HTMLResponse(
-        '<div class="alert-warning" id="upload-status">'
-        'File da luu nhung Jetson dang offline. Se cap nhat khi ket noi lai.</div>'
-    )
+    raise HTTPException(status_code=410, detail=OTA_DISABLED_MESSAGE)
 
 
 @router.post("/vehicles/{vehicle_id}/test")

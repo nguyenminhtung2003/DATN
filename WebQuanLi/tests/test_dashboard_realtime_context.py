@@ -146,6 +146,18 @@ class DashboardRealtimeContextTest(unittest.TestCase):
         self.assertNotIn("Loa Bluetooth", response.text)
         self.assertNotIn("Audio Output", response.text)
 
+    def test_dashboard_hides_ota_upload_controls(self):
+        response = asyncio.run(self._request("GET", "/"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("/api/vehicles/1/update", response.text)
+        self.assertNotIn('id="ota-file-input"', response.text)
+        self.assertNotIn('id="btn-upload"', response.text)
+        self.assertNotIn('id="upload-status"', response.text)
+        self.assertIn('id="btn-test-1"', response.text)
+        self.assertIn('id="btn-test-2"', response.text)
+        self.assertIn('id="btn-test-3"', response.text)
+
     def test_dashboard_marks_connection_offline_when_websocket_is_not_active(self):
         event_bus._vehicle_state[f"vehicle:{self.device_id}"] = {
             "connection": {"status": "online", "device_id": self.device_id},

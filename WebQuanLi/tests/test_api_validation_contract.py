@@ -398,20 +398,7 @@ class ApiValidationContractTest(unittest.TestCase):
         self.assertEqual(response.json()["message"], "Jetson dang offline, chua gui duoc lenh")
         send_command.assert_not_awaited()
 
-    def test_ota_upload_rejects_path_traversal_filename(self):
-        async def run():
-            return await self._request(
-                "POST",
-                "/api/vehicles/1/update",
-                files={"file": ("../evil.py", b"print('boom')", "text/x-python")},
-            )
-
-        response = asyncio.run(run())
-
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("filename", response.json()["detail"].lower())
-
-    def test_ota_upload_records_audit_log_and_sends_checksum(self):
+    def test_ota_update_endpoint_is_disabled(self):
         async def run():
             from unittest.mock import AsyncMock, patch
 
@@ -431,19 +418,16 @@ class ApiValidationContractTest(unittest.TestCase):
 
                 result = await db.execute(select(OtaAuditLog))
                 audit_rows = result.scalars().all()
-            return response, send_command, audit_rows
+            upload_file = settings.UPLOAD_DIR / "main.py"
+            return response, send_command, audit_rows, upload_file.exists()
 
-        response, send_command, audit_rows = asyncio.run(run())
+        response, send_command, audit_rows, upload_exists = asyncio.run(run())
 
-        self.assertEqual(response.status_code, 200)
-        send_command.assert_awaited_once()
-        _, command = send_command.await_args.args
-        self.assertEqual(command["action"], "update_software")
-        self.assertEqual(command["filename"], "main.py")
-        self.assertRegex(command["checksum"], r"^[0-9a-f]{64}$")
-        self.assertEqual(len(audit_rows), 1)
-        self.assertEqual(audit_rows[0].filename, "main.py")
-        self.assertEqual(audit_rows[0].status, "sent")
+        self.assertEqual(response.status_code, 410)
+        self.assertIn("OTA da bi vo hieu hoa", response.json()["detail"])
+        send_command.assert_not_awaited()
+        self.assertEqual(audit_rows, [])
+        self.assertFalse(upload_exists)
 
 
 if __name__ == "__main__":
