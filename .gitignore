@@ -42,3 +42,4 @@ Version3/drowsiguard.env.jetson
 
 .DS_Store
 Thumbs.db
+node_modules

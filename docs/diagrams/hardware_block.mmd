@@ -1,0 +1,31 @@
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"Arial","primaryTextColor":"#1F2933","lineColor":"#52606D"}}}%%
+%% Sơ đồ khối phần cứng: ba tầng đầu vào, xử lý tại xe, đầu ra/giao tiếp.
+flowchart TB
+    subgraph Input["Đầu vào"]
+        direction LR
+        Camera["Camera"]:::network
+        RFID["Đầu đọc RFID"]:::network
+    end
+
+    Jetson["Jetson Nano"]:::jetson
+
+    subgraph Output["Đầu ra / giao tiếp"]
+        direction LR
+        Alert["Loa / còi / LED"]:::alert
+        Wifi["Wi-Fi / hotspot"]:::network
+        Server["Laptop WebQuanLi"]:::web
+        Browser["Dashboard"]:::person
+    end
+
+    Camera --> Jetson
+    RFID --> Jetson
+    Jetson --> Alert
+    Jetson <--> Wifi
+    Wifi <--> Server
+    Server --> Browser
+
+    classDef person fill:#E8F2FF,stroke:#2F80ED,stroke-width:1.3px,color:#1F2933;
+    classDef jetson fill:#E9F8EF,stroke:#219653,stroke-width:1.5px,color:#1F2933;
+    classDef web fill:#FFF4E6,stroke:#F2994A,stroke-width:1.5px,color:#1F2933;
+    classDef alert fill:#FFE8E8,stroke:#EB5757,stroke-width:1.5px,color:#1F2933;
+    classDef network fill:#F4F4F4,stroke:#828282,stroke-width:1.2px,color:#1F2933;

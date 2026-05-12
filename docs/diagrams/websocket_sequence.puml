@@ -1,0 +1,64 @@
+@startuml
+title Sequence Jetson ↔ WebQuanLi
+
+skinparam shadowing false
+skinparam backgroundColor #FFFFFF
+skinparam defaultFontName Arial
+skinparam sequence {
+    ArrowColor #52606D
+    LifeLineBorderColor #9AA5B1
+    LifeLineBackgroundColor #F4F4F4
+    ParticipantBorderColor #52606D
+    ParticipantBackgroundColor #FFF4E6
+    ActorBorderColor #2F80ED
+    ActorBackgroundColor #E8F2FF
+}
+
+actor "Jetson Version3" as Jetson #E9F8EF
+participant "WebQuanLi WebSocket" as WS #FFF4E6
+participant "Session Service" as Session #FFF4E6
+database "SQLite" as DB #F2F0FF
+participant "EventBus/SSE" as EventBus #F4F4F4
+actor "Dashboard" as Dashboard #E8F2FF
+
+== Kết nối thiết bị ==
+Jetson -> WS: Kết nối /ws/jetson/{device_id}
+WS -> DB: Tìm vehicle
+WS -> EventBus: connection=online
+Dashboard -> EventBus: Mở SSE
+
+== RFID và xác minh tài xế ==
+Jetson -> WS: RFID driver probe
+WS -> Session: resolve_driver_by_rfid
+Session -> DB: SELECT driver
+WS -> EventBus: publish driver
+
+alt Không tìm thấy tài xế
+    WS -> EventBus: verify_error
+else Có tài xế
+    Jetson -> Jetson: Xác minh khuôn mặt
+end
+
+== Phiên lái và cảnh báo ==
+Jetson -> WS: session_start
+WS -> Session: start_or_reuse_session
+Session -> DB: Lưu phiên lái
+WS -> EventBus: session_start
+EventBus -> Dashboard: Cập nhật phiên
+
+loop Trong phiên lái
+    Jetson -> WS: alert metrics + AI state
+    WS -> Session: create_drowsiness_alert
+    Session -> DB: Lưu cảnh báo
+    WS -> EventBus: publish alert
+    EventBus -> Dashboard: Cập nhật cảnh báo
+end
+
+== Kết thúc và offline ==
+Jetson -> WS: session_end
+WS -> Session: close_active_session
+Session -> DB: Cập nhật checkout_at
+WS -> EventBus: session_end
+Jetson -x WS: disconnect
+WS -> EventBus: connection=offline
+@enduml

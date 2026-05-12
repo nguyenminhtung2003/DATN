@@ -48,6 +48,14 @@ async def _get_vehicle_or_404(db: AsyncSession, vehicle_id: int) -> Vehicle:
     return vehicle
 
 
+async def _get_driver_or_404(db: AsyncSession, driver_id: int) -> Driver:
+    result = await db.execute(select(Driver).where(Driver.id == driver_id))
+    driver = result.scalar_one_or_none()
+    if not driver:
+        raise HTTPException(status_code=404, detail="Tai xe khong tim thay")
+    return driver
+
+
 def _absolute_face_image_url(request: Request, face_image_path: str) -> str:
     if face_image_path.startswith(("http://", "https://")):
         return face_image_path
@@ -67,7 +75,6 @@ async def _build_driver_registry_manifest(db: AsyncSession, request: Request, de
 
     driver_result = await db.execute(
         select(Driver).where(
-            Driver.vehicle_id == vehicle.id,
             Driver.is_active.is_(True),
             Driver.face_image_path.is_not(None),
         ).order_by(Driver.id)
@@ -98,6 +105,41 @@ async def _dispatch_driver_registry_sync(request: Request, vehicle: Vehicle) -> 
     })
     logger.info(f"Driver registry sync command sent to {vehicle.device_id}")
     return True
+
+
+async def _dispatch_driver_registry_sync_for_driver(request: Request, db: AsyncSession, driver: Driver) -> bool:
+    if driver.vehicle_id:
+        vehicle = await _get_vehicle_or_404(db, driver.vehicle_id)
+        return await _dispatch_driver_registry_sync(request, vehicle)
+
+    result = await db.execute(
+        select(Vehicle).where(
+            Vehicle.is_active.is_(True),
+            Vehicle.device_id.is_not(None),
+        ).order_by(Vehicle.id)
+    )
+    vehicles = result.scalars().all()
+
+    sent = False
+    for vehicle in vehicles:
+        sent = await _dispatch_driver_registry_sync(request, vehicle) or sent
+    return sent
+
+
+async def _dispatch_driver_registry_sync_to_online_vehicles(request: Request, db: AsyncSession) -> int:
+    result = await db.execute(
+        select(Vehicle).where(
+            Vehicle.is_active.is_(True),
+            Vehicle.device_id.is_not(None),
+        ).order_by(Vehicle.id)
+    )
+    vehicles = result.scalars().all()
+
+    sent_count = 0
+    for vehicle in vehicles:
+        if await _dispatch_driver_registry_sync(request, vehicle):
+            sent_count += 1
+    return sent_count
 
 
 @router.get("/jetson/{device_id}/driver-registry")
@@ -216,14 +258,30 @@ async def update_driver(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(check_admin),
 ):
-    result = await db.execute(select(Driver).where(Driver.id == driver_id))
-    driver = result.scalar_one_or_none()
-    if not driver:
-        raise HTTPException(status_code=404, detail="Tai xe khong tim thay")
+    driver = await _get_driver_or_404(db, driver_id)
     for key, val in data.model_dump(exclude_unset=True).items():
         setattr(driver, key, val)
     await db.commit()
     return {"status": "updated"}
+
+
+@router.delete("/drivers/{driver_id}")
+async def delete_driver(
+    driver_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(check_admin),
+):
+    driver = await _get_driver_or_404(db, driver_id)
+    driver.is_active = False
+    await db.commit()
+
+    sent_count = await _dispatch_driver_registry_sync_to_online_vehicles(request, db)
+    return {
+        "status": "deleted",
+        "driver_id": driver_id,
+        "sync_sent": sent_count,
+    }
 
 
 @router.post("/drivers/{driver_id}/face")
@@ -234,10 +292,7 @@ async def upload_face_image(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(check_admin),
 ):
-    result = await db.execute(select(Driver).where(Driver.id == driver_id))
-    driver = result.scalar_one_or_none()
-    if not driver:
-        raise HTTPException(status_code=404, detail="Tai xe khong tim thay")
+    driver = await _get_driver_or_404(db, driver_id)
 
     extension = FACE_CONTENT_TYPES.get(file.content_type or "")
     if not extension:
@@ -259,8 +314,6 @@ async def upload_face_image(
     driver.face_image_path = f"/static/faces/{Path(filepath).name}"
     await db.commit()
 
-    if driver.vehicle_id:
-        vehicle = await _get_vehicle_or_404(db, driver.vehicle_id)
-        await _dispatch_driver_registry_sync(request, vehicle)
+    await _dispatch_driver_registry_sync_for_driver(request, db, driver)
 
     return {"status": "uploaded", "path": driver.face_image_path}

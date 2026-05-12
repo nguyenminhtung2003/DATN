@@ -1,0 +1,27 @@
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"Arial","primaryTextColor":"#1F2933","lineColor":"#52606D"}}}%%
+%% Sơ đồ tổng quan theo C4-style context: chỉ giữ actor, hệ thống chính và luồng giao tiếp.
+flowchart LR
+    Driver["Người lái"]:::person
+    Manager["Người quản lý"]:::person
+
+    Inputs["Camera + RFID"]:::network
+    Jetson["DrowsiGuard trên Jetson Nano"]:::jetson
+    Alert["Thiết bị cảnh báo tại xe"]:::alert
+    Web["WebQuanLi"]:::web
+    Dashboard["Dashboard"]:::person
+    Db[("SQLite WebQuanLi")]:::db
+
+    Driver -->|"quan sát / xác thực"| Inputs
+    Inputs -->|"frame + UID"| Jetson
+    Jetson -->|"cảnh báo tại xe"| Alert
+    Jetson -->|"WebSocket realtime"| Web
+    Web -->|"SSE / giao diện"| Dashboard
+    Manager -->|"theo dõi"| Dashboard
+    Web -->|"lưu phiên và cảnh báo"| Db
+
+    classDef person fill:#E8F2FF,stroke:#2F80ED,stroke-width:1.3px,color:#1F2933;
+    classDef jetson fill:#E9F8EF,stroke:#219653,stroke-width:1.5px,color:#1F2933;
+    classDef web fill:#FFF4E6,stroke:#F2994A,stroke-width:1.5px,color:#1F2933;
+    classDef db fill:#F2F0FF,stroke:#7B61FF,stroke-width:1.3px,color:#1F2933;
+    classDef alert fill:#FFE8E8,stroke:#EB5757,stroke-width:1.5px,color:#1F2933;
+    classDef network fill:#F4F4F4,stroke:#828282,stroke-width:1.2px,color:#1F2933;

@@ -1,0 +1,26 @@
+%% Trạng thái AI và mức cảnh báo, rút gọn cho phần thuyết minh.
+stateDiagram-v2
+    [*] --> NORMAL
+
+    NORMAL --> LOW_CONFIDENCE: mắt/khuôn mặt yếu
+    LOW_CONFIDENCE --> NORMAL: tín hiệu phục hồi
+
+    NORMAL --> NO_FACE: mất mặt kéo dài
+    NO_FACE --> Alert1: alert_hint 1
+    NO_FACE --> NORMAL: thấy lại mặt
+
+    NORMAL --> EYES_CLOSED: EAR thấp
+    EYES_CLOSED --> NORMAL: mắt mở lại
+    EYES_CLOSED --> DROWSY: đóng mắt kéo dài
+
+    NORMAL --> YAWNING: MAR cao
+    YAWNING --> Alert1: ngáp đơn lẻ
+    NORMAL --> HEAD_DOWN: cúi đầu
+
+    DROWSY --> Alert2: buồn ngủ rõ
+    HEAD_DOWN --> Alert2: kéo dài
+    DROWSY --> Alert3: nguy hiểm
+
+    Alert1: Alert Level 1
+    Alert2: Alert Level 2
+    Alert3: Alert Level 3

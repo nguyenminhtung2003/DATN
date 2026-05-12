@@ -1,0 +1,27 @@
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"Arial","primaryTextColor":"#1F2933","lineColor":"#52606D"}}}%%
+%% Workflow RFID/check-in/check-out: happy path dọc, nhánh lỗi và check-out tách riêng để tránh mũi tên vòng dài.
+flowchart TD
+    Scan([Quẹt thẻ RFID]):::start --> Read["Đọc UID"]:::step
+    Read --> Active{"Đang có phiên lái?"}:::decision
+
+    Active -->|"Có"| EndNow["Gửi session_end"]:::web
+    EndNow --> StopNow([Kết thúc phiên]):::start
+
+    Active -->|"Không"| Lookup["Tra cứu tài xế"]:::step
+    Lookup --> Verify["Xác minh khuôn mặt"]:::step
+    Verify --> Valid{"Tài xế hợp lệ?"}:::decision
+
+    Valid -->|"Không"| Error["Báo lỗi xác minh"]:::alert
+    Error --> Wait([Chờ quẹt lại]):::start
+
+    Valid -->|"Có"| Start["Gửi session_start"]:::web
+    Start --> Monitor["Giám sát trong phiên"]:::jetson
+    Monitor --> Send["Trạng thái / cảnh báo"]:::alert
+    Send --> ReScan([Quẹt lại để kết thúc]):::start
+
+    classDef start fill:#E8F2FF,stroke:#2F80ED,stroke-width:1.3px,color:#1F2933;
+    classDef step fill:#F4F4F4,stroke:#828282,stroke-width:1.2px,color:#1F2933;
+    classDef decision fill:#FFF4E6,stroke:#F2994A,stroke-width:1.5px,color:#1F2933;
+    classDef jetson fill:#E9F8EF,stroke:#219653,stroke-width:1.5px,color:#1F2933;
+    classDef web fill:#FFF4E6,stroke:#F2994A,stroke-width:1.5px,color:#1F2933;
+    classDef alert fill:#FFE8E8,stroke:#EB5757,stroke-width:1.5px,color:#1F2933;

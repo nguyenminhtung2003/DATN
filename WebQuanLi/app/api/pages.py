@@ -142,7 +142,9 @@ async def fleet_page(
     vehicles_result = await db.execute(select(Vehicle).order_by(Vehicle.id))
     vehicles = vehicles_result.scalars().all()
 
-    drivers_result = await db.execute(select(Driver).order_by(Driver.id))
+    drivers_result = await db.execute(
+        select(Driver).where(Driver.is_active.is_(True)).order_by(Driver.id)
+    )
     drivers = drivers_result.scalars().all()
 
     return templates.TemplateResponse(request=request, name="fleet.html", context={

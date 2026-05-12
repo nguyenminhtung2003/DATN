@@ -99,7 +99,7 @@ class DashboardRealtimeContextTest(unittest.TestCase):
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             return await client.request(method, path, **kwargs)
 
-    def test_dashboard_renders_cached_queue_gps_and_last_seen(self):
+    def test_dashboard_hides_technical_summary_chips(self):
         manager.active[self.device_id] = object()
         manager.last_seen[self.device_id] = datetime(2026, 4, 21, 1, 23, 45, tzinfo=timezone.utc)
         event_bus._vehicle_state[f"vehicle:{self.device_id}"] = {
@@ -119,11 +119,14 @@ class DashboardRealtimeContextTest(unittest.TestCase):
         response = asyncio.run(self._request("GET", "/"))
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn("Queue Chờ (Jetson)", response.text)
-        self.assertIn(">7<", response.text)
-        self.assertIn("10.762622", response.text)
-        self.assertIn("106.660172", response.text)
-        self.assertIn("2026-04-21 01:23:45 UTC", response.text)
+        self.assertIn("Phiên giám sát", response.text)
+        self.assertIn("Xác minh", response.text)
+        self.assertIn("Thiết bị", response.text)
+        self.assertIn("Cảnh báo gần đây", response.text)
+        self.assertNotIn("Queue Chờ (Jetson)", response.text)
+        self.assertNotIn('id="queue-pending-count"', response.text)
+        self.assertNotIn('id="last-seen-text"', response.text)
+        self.assertNotIn('id="gps-latest-summary"', response.text)
         self.assertIn('<button class="connection-badge"', response.text)
         self.assertIn('id="connection-status"', response.text)
         self.assertIn('data-connection-state="online"', response.text)

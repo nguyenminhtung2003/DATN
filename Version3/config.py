@@ -218,7 +218,7 @@ LOG_BACKUP_COUNT = 3
 # Directory to store local reference images and registry manifest
 FACE_DATA_DIR = os.path.join(os.path.dirname(__file__), "storage", "driver_faces")
 FACE_REGISTRY_PATH = os.path.join(os.path.dirname(__file__), "storage", "driver_registry.json")
-FACE_VERIFY_THRESHOLD = float(os.getenv("DROWSIGUARD_FACE_VERIFY_THRESHOLD", "0.82"))
+FACE_VERIFY_THRESHOLD = float(os.getenv("DROWSIGUARD_FACE_VERIFY_THRESHOLD", "0.785"))
 FACE_VERIFY_METHOD = os.getenv("DROWSIGUARD_FACE_VERIFY_METHOD", "auto")
 FACE_LBPH_THRESHOLD = float(os.getenv("DROWSIGUARD_FACE_LBPH_THRESHOLD", "60.0"))
 FACE_CROP_PADDING_RATIO = float(os.getenv("DROWSIGUARD_FACE_CROP_PADDING", "0.18"))

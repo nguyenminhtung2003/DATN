@@ -1,0 +1,67 @@
+direction: right
+
+classes: {
+  vehicle: {
+    style.fill: "#E9F8EF"
+    style.stroke: "#219653"
+  }
+  network: {
+    style.fill: "#F4F4F4"
+    style.stroke: "#828282"
+  }
+  server: {
+    style.fill: "#FFF4E6"
+    style.stroke: "#F2994A"
+  }
+  data: {
+    style.fill: "#F2F0FF"
+    style.stroke: "#7B61FF"
+  }
+  user: {
+    style.fill: "#E8F2FF"
+    style.stroke: "#2F80ED"
+  }
+}
+
+vehicle: {
+  label: "Thiết bị trên xe"
+  direction: down
+  style.fill: "#F7FFF9"
+  style.stroke: "#219653"
+
+  sensors: "Camera + RFID" {
+    class: vehicle
+  }
+  jetson: "Jetson Nano\nVersion3" {
+    class: vehicle
+  }
+  sensors -> jetson: frame / UID
+}
+
+lan: "Hotspot / router\nLAN demo" {
+  class: network
+}
+
+laptop: {
+  label: "Laptop / WebQuanLi"
+  direction: down
+  style.fill: "#FFFCF7"
+  style.stroke: "#F2994A"
+
+  web: "WebQuanLi\n0.0.0.0:8000" {
+    class: server
+  }
+  db: "SQLite" {
+    class: data
+    shape: cylinder
+  }
+  web -> db: lưu dữ liệu
+}
+
+viewer: "Dashboard browser" {
+  class: user
+}
+
+vehicle.jetson <-> lan: Wi-Fi
+lan <-> laptop.web: "ws://<laptop-ip>:8000/ws/jetson/JETSON-001"
+viewer -> laptop.web: "http://<laptop-ip>:8000"

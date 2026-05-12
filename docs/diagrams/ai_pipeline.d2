@@ -1,0 +1,53 @@
+direction: right
+
+classes: {
+  input: {
+    style.fill: "#F4F4F4"
+    style.stroke: "#828282"
+  }
+  ai: {
+    style.fill: "#E9F8EF"
+    style.stroke: "#219653"
+  }
+  threshold: {
+    style.fill: "#F2F0FF"
+    style.stroke: "#7B61FF"
+  }
+  alert: {
+    style.fill: "#FFE8E8"
+    style.stroke: "#EB5757"
+  }
+  web: {
+    style.fill: "#FFF4E6"
+    style.stroke: "#F2994A"
+  }
+}
+
+stage1: "1. Thu nhận frame\nCamera" {
+  class: input
+}
+stage2: "2. Phát hiện khuôn mặt\nMediaPipe Face Mesh" {
+  class: ai
+}
+stage3: "3. Trích xuất đặc trưng\nEAR / MAR / pitch / eye quality" {
+  class: ai
+}
+stage4: "4. Hiệu chuẩn và ngưỡng\nbaseline EAR / adaptive threshold" {
+  class: threshold
+}
+stage5: "5. Phân loại trạng thái\nPERCLOS / alert_hint" {
+  class: ai
+}
+stage6: "6. Cảnh báo và realtime\nthiết bị cảnh báo / WebQuanLi" {
+  class: alert
+}
+web_status: "WebQuanLi realtime status" {
+  class: web
+}
+
+stage1 -> stage2: frame
+stage2 -> stage3: landmarks
+stage3 -> stage4: samples
+stage4 -> stage5: thresholds
+stage5 -> stage6: alert
+stage6 -> web_status: WebSocket

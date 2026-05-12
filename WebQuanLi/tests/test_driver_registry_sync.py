@@ -88,28 +88,80 @@ class DriverRegistrySyncTest(unittest.TestCase):
                 rfid_tag="RFID-UP",
                 vehicle_id=vehicle.id,
             )
-            db.add_all([assigned, no_face, other_vehicle_driver, inactive, upload_target])
+            delete_target = Driver(
+                name="Delete Target Driver",
+                rfid_tag="RFID-DELETE",
+                vehicle_id=vehicle.id,
+                face_image_path="/static/faces/driver_delete.jpg",
+            )
+            unassigned_with_face = Driver(
+                name="Unassigned Face Driver",
+                rfid_tag="RFID-UNASSIGNED",
+                vehicle_id=None,
+                face_image_path="/static/faces/driver_unassigned.jpg",
+            )
+            unassigned_upload_target = Driver(
+                name="Unassigned Upload Target",
+                rfid_tag="RFID-UP-UNASSIGNED",
+                vehicle_id=None,
+            )
+            db.add_all([
+                assigned,
+                no_face,
+                other_vehicle_driver,
+                inactive,
+                upload_target,
+                delete_target,
+                unassigned_with_face,
+                unassigned_upload_target,
+            ])
             await db.commit()
 
             return {
                 "vehicle_id": vehicle.id,
                 "upload_target_id": upload_target.id,
+                "delete_target_id": delete_target.id,
+                "unassigned_upload_target_id": unassigned_upload_target.id,
             }
 
     async def _request(self, method, path, **kwargs):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             return await client.request(method, path, **kwargs)
 
-    def test_registry_endpoint_returns_only_active_assigned_drivers_with_faces(self):
+    def test_registry_endpoint_returns_active_drivers_with_faces_without_vehicle_filter(self):
         response = asyncio.run(self._request("GET", "/api/jetson/jetson-nano-001/driver-registry"))
 
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload["device_id"], "jetson-nano-001")
-        self.assertEqual(len(payload["drivers"]), 1)
-        self.assertEqual(payload["drivers"][0]["name"], "Assigned Driver")
-        self.assertEqual(payload["drivers"][0]["rfid_tag"], "RFID-A")
-        self.assertEqual(payload["drivers"][0]["face_image_url"], "http://test/static/faces/driver_assigned.jpg")
+
+        by_rfid = {driver["rfid_tag"]: driver for driver in payload["drivers"]}
+        self.assertEqual(
+            set(by_rfid),
+            {"RFID-A", "RFID-C", "RFID-DELETE", "RFID-UNASSIGNED"},
+        )
+        self.assertEqual(by_rfid["RFID-A"]["name"], "Assigned Driver")
+        self.assertEqual(
+            by_rfid["RFID-A"]["face_image_url"],
+            "http://test/static/faces/driver_assigned.jpg",
+        )
+        self.assertEqual(by_rfid["RFID-C"]["name"], "Other Vehicle Driver")
+        self.assertEqual(
+            by_rfid["RFID-C"]["face_image_url"],
+            "http://test/static/faces/driver_other.jpg",
+        )
+        self.assertEqual(by_rfid["RFID-DELETE"]["name"], "Delete Target Driver")
+        self.assertEqual(
+            by_rfid["RFID-DELETE"]["face_image_url"],
+            "http://test/static/faces/driver_delete.jpg",
+        )
+        self.assertEqual(by_rfid["RFID-UNASSIGNED"]["name"], "Unassigned Face Driver")
+        self.assertEqual(
+            by_rfid["RFID-UNASSIGNED"]["face_image_url"],
+            "http://test/static/faces/driver_unassigned.jpg",
+        )
+        self.assertNotIn("RFID-B", by_rfid)
+        self.assertNotIn("RFID-D", by_rfid)
 
     def test_upload_face_triggers_registry_sync_command_for_online_vehicle(self):
         with patch("app.ws.jetson_handler.manager.send_command", new=AsyncMock()) as send_command, patch.dict(
@@ -132,6 +184,33 @@ class DriverRegistrySyncTest(unittest.TestCase):
         self.assertEqual(command["action"], "sync_driver_registry")
         self.assertTrue(command["manifest_url"].endswith("/api/jetson/jetson-nano-001/driver-registry"))
 
+    def test_upload_face_for_unassigned_driver_syncs_all_online_active_vehicle_registries(self):
+        with patch("app.ws.jetson_handler.manager.send_command", new=AsyncMock()) as send_command, patch.dict(
+            "app.ws.jetson_handler.manager.active",
+            {
+                "jetson-nano-001": object(),
+                "jetson-other-002": object(),
+            },
+            clear=True,
+        ):
+            response = asyncio.run(
+                self._request(
+                    "POST",
+                    f"/api/drivers/{self.ids['unassigned_upload_target_id']}/face",
+                    files={"file": ("face.jpg", b"\xff\xd8\xff\xe0demo-image", "image/jpeg")},
+                )
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(send_command.await_count, 2)
+
+        calls = send_command.await_args_list
+        sent_by_device = {call.args[0]: call.args[1] for call in calls}
+        self.assertEqual(set(sent_by_device), {"jetson-nano-001", "jetson-other-002"})
+        for device_id, command in sent_by_device.items():
+            self.assertEqual(command["action"], "sync_driver_registry")
+            self.assertTrue(command["manifest_url"].endswith(f"/api/jetson/{device_id}/driver-registry"))
+
     def test_manual_sync_endpoint_dispatches_driver_registry_command(self):
         with patch("app.ws.jetson_handler.manager.send_command", new=AsyncMock()) as send_command, patch.dict(
             "app.ws.jetson_handler.manager.active",
@@ -145,6 +224,36 @@ class DriverRegistrySyncTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["status"], "sent")
         send_command.assert_awaited_once()
+
+    def test_soft_delete_driver_removes_from_registry_and_syncs_online_devices(self):
+        with patch("app.ws.jetson_handler.manager.send_command", new=AsyncMock()) as send_command, patch.dict(
+            "app.ws.jetson_handler.manager.active",
+            {
+                "jetson-nano-001": object(),
+                "jetson-other-002": object(),
+            },
+            clear=True,
+        ):
+            delete_response = asyncio.run(
+                self._request("DELETE", f"/api/drivers/{self.ids['delete_target_id']}")
+            )
+            registry_response = asyncio.run(
+                self._request("GET", "/api/jetson/jetson-nano-001/driver-registry")
+            )
+
+        self.assertEqual(delete_response.status_code, 200)
+        self.assertEqual(delete_response.json()["status"], "deleted")
+
+        payload = registry_response.json()
+        rfids = {driver["rfid_tag"] for driver in payload["drivers"]}
+        self.assertNotIn("RFID-DELETE", rfids)
+
+        self.assertEqual(send_command.await_count, 2)
+        sent_by_device = {call.args[0]: call.args[1] for call in send_command.await_args_list}
+        self.assertEqual(set(sent_by_device), {"jetson-nano-001", "jetson-other-002"})
+        for device_id, command in sent_by_device.items():
+            self.assertEqual(command["action"], "sync_driver_registry")
+            self.assertTrue(command["manifest_url"].endswith(f"/api/jetson/{device_id}/driver-registry"))
 
 
 if __name__ == "__main__":

@@ -1,0 +1,17 @@
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"Arial","primaryTextColor":"#1F2933","lineColor":"#52606D"}}}%%
+%% Luồng thuật toán buồn ngủ: dùng cho phụ lục hoặc slide bảo vệ.
+flowchart TD
+    Frame["Nhận frame"]:::network --> Face{"Có khuôn mặt?"}:::decision
+    Face -->|"Không"| NoFace["NO_FACE"]:::alert
+    Face -->|"Có"| Quality{"Mắt đáng tin cậy?"}:::decision
+    Quality -->|"Không"| Low["LOW_CONFIDENCE"]:::alert
+    Quality -->|"Có"| Features["Tính EAR / MAR / pitch"]:::step
+    Features --> Threshold["So ngưỡng cá nhân hóa"]:::jetson
+    Threshold --> Classify["Phân loại trạng thái"]:::step
+    Classify --> Hint["Sinh alert_hint"]:::alert
+
+    classDef network fill:#F4F4F4,stroke:#828282,stroke-width:1.2px,color:#1F2933;
+    classDef decision fill:#FFF4E6,stroke:#F2994A,stroke-width:1.5px,color:#1F2933;
+    classDef step fill:#E9F8EF,stroke:#219653,stroke-width:1.5px,color:#1F2933;
+    classDef jetson fill:#F2F0FF,stroke:#7B61FF,stroke-width:1.3px,color:#1F2933;
+    classDef alert fill:#FFE8E8,stroke:#EB5757,stroke-width:1.5px,color:#1F2933;

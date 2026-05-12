@@ -9,6 +9,43 @@
 <!-- Vehicles -->
 <section class="panel">
     <h2 class="panel-title">🚗 Danh sách xe <span class="badge badge-count">{{ vehicles|length }}</span></h2>
+
+    {% if user.role == 'admin' %}
+    <div class="add-driver-section" id="add-vehicle-section" style="display:none;">
+        <h4>➕ Thêm xe mới</h4>
+        <form id="add-vehicle-form" class="filter-form">
+            <div class="filter-grid">
+                <div class="form-group">
+                    <label>Biển số</label>
+                    <input type="text" name="plate_number" required placeholder="59A-12345">
+                </div>
+                <div class="form-group">
+                    <label>Tên xe</label>
+                    <input type="text" name="name" required placeholder="Xe Demo 02">
+                </div>
+                <div class="form-group">
+                    <label>Device ID</label>
+                    <input type="text" name="device_id" placeholder="JETSON-002">
+                </div>
+                <div class="form-group">
+                    <label>SĐT quản lý</label>
+                    <input type="text" name="manager_phone" placeholder="0901234567">
+                </div>
+                <div class="form-group form-group-btn">
+                    <button type="submit" class="btn btn-primary">💾 Lưu</button>
+                    <button type="button" class="btn btn-secondary"
+                        onclick="document.getElementById('add-vehicle-section').style.display='none'">Hủy</button>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <button class="btn btn-primary" onclick="document.getElementById('add-vehicle-section').style.display='block'"
+        id="btn-add-vehicle" style="margin-bottom: 16px;">
+        ➕ Thêm xe
+    </button>
+    {% endif %}
+
     <div class="table-responsive">
         <table class="data-table">
             <thead>
@@ -135,6 +172,8 @@
                             title="Upload ảnh mặt">📷</button>
                         <input type="file" id="face-input-{{ d.id }}" accept="image/*" style="display:none"
                             onchange="uploadFace({{ d.id }}, this)">
+                        <button class="btn-icon btn-delete-driver" data-id="{{ d.id }}" data-name="{{ d.name }}"
+                            title="Xóa tài xế">🗑️</button>
                     </td>
                     {% endif %}
                 </tr>
@@ -187,6 +226,28 @@
 
 {% block scripts %}
 <script>
+    // Add new vehicle
+    document.getElementById('add-vehicle-form')?.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        const data = Object.fromEntries(formData.entries());
+        data.device_id = data.device_id || null;
+        data.manager_phone = data.manager_phone || null;
+
+        const resp = await fetch('/api/vehicles', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+        });
+
+        if (resp.ok) {
+            location.reload();
+        } else {
+            const err = await resp.json();
+            alert('Lỗi: ' + (err.detail || 'Không thể thêm xe'));
+        }
+    });
+
     // Add new driver
     document.getElementById('add-driver-form')?.addEventListener('submit', async function (e) {
         e.preventDefault();
@@ -247,6 +308,28 @@
             const err = await resp.json();
             alert('Lỗi: ' + (err.detail || 'Không thể cập nhật'));
         }
+    });
+
+    // Soft delete driver
+    document.querySelectorAll('.btn-delete-driver').forEach(function (btn) {
+        btn.addEventListener('click', async function () {
+            const driverId = this.dataset.id;
+            const driverName = this.dataset.name || 'tài xế này';
+            if (!confirm(`Bạn có chắc muốn xóa ${driverName} khỏi danh sách tài xế?`)) {
+                return;
+            }
+
+            const resp = await fetch(`/api/drivers/${driverId}`, {
+                method: 'DELETE',
+            });
+
+            if (resp.ok) {
+                location.reload();
+            } else {
+                const err = await resp.json();
+                alert('Lỗi: ' + (err.detail || 'Không thể xóa tài xế'));
+            }
+        });
     });
 
     // Upload face image

@@ -1,12 +1,12 @@
 {% extends "base.html" %}
-{% block title %}Dashboard{% endblock %}
+{% block title %}Trung tâm giám sát{% endblock %}
 
 {% block content %}
 <div class="trust-banking-dashboard">
     <div class="dashboard-header command-hero trust-hero">
         <div class="hero-copy">
             <span class="eyebrow">TRUST SAFETY OVERVIEW</span>
-            <h1>📊 Bảng Điều Khiển Giám Sát</h1>
+            <h1>📊 Monitoring Hub</h1>
             <p class="dashboard-subtitle">Một màn hình quản lý tin cậy cho RFID, xác minh khuôn mặt, cảnh báo buồn ngủ
                 và trạng thái Jetson Nano theo thời gian thực.</p>
         </div>
@@ -46,18 +46,6 @@
         <div class="overview-chip">
             <span class="chip-label">Cảnh báo gần đây</span>
             <strong>{{ recent_alerts|length }}</strong>
-        </div>
-        <div class="overview-chip">
-            <span class="chip-label">Queue Chờ (Jetson)</span>
-            <strong id="queue-pending-count">{{ queue_pending_initial }}</strong>
-        </div>
-        <div class="overview-chip">
-            <span class="chip-label">Last Seen</span>
-            <strong id="last-seen-text">{{ last_seen_text }}</strong>
-        </div>
-        <div class="overview-chip">
-            <span class="chip-label">GPS Gần Nhất</span>
-            <strong id="gps-latest-summary">{{ latest_gps_summary }}</strong>
         </div>
     </div>
 

@@ -1,0 +1,111 @@
+direction: right
+
+classes: {
+  jetson: {
+    style.fill: "#E9F8EF"
+    style.stroke: "#219653"
+  }
+  web: {
+    style.fill: "#FFF4E6"
+    style.stroke: "#F2994A"
+  }
+  data: {
+    style.fill: "#F2F0FF"
+    style.stroke: "#7B61FF"
+  }
+  alert: {
+    style.fill: "#FFE8E8"
+    style.stroke: "#EB5757"
+  }
+  bridge: {
+    style.fill: "#F4F4F4"
+    style.stroke: "#828282"
+  }
+}
+
+jetson: {
+  label: "Jetson Nano - Version3"
+  direction: down
+  style.fill: "#F7FFF9"
+  style.stroke: "#219653"
+
+  runtime: "Điều phối runtime\nmain.py" {
+    class: jetson
+  }
+  face: "Phân tích khuôn mặt\nFaceAnalyzer" {
+    class: jetson
+  }
+  ai: "Phân loại buồn ngủ\nDrowsinessClassifier" {
+    class: jetson
+  }
+  calibration: "Hiệu chuẩn tài xế\nDriverCalibrator" {
+    class: jetson
+  }
+  rfid: "RFID + xác minh" {
+    class: jetson
+  }
+  local_alert: "Cảnh báo tại xe\nAlertManager" {
+    class: alert
+  }
+  queue: "Hàng đợi offline\nLocalQueue SQLite" {
+    class: data
+    shape: cylinder
+  }
+
+  rfid -> runtime: UID
+  face -> ai: metrics
+  calibration -> ai: thresholds
+  ai -> local_alert: alert_hint
+  runtime -> queue: offline events
+}
+
+bridge: {
+  label: "Giao tiếp realtime"
+  direction: down
+  style.fill: "#FAFAFA"
+  style.stroke: "#828282"
+
+  ws: "WebSocket JSON" {
+    class: bridge
+  }
+  sse: "SSE realtime" {
+    class: bridge
+  }
+}
+
+webquanli: {
+  label: "WebQuanLi"
+  direction: down
+  style.fill: "#FFFCF7"
+  style.stroke: "#F2994A"
+
+  handler: "WebSocket handler" {
+    class: web
+  }
+  session: "Session service" {
+    class: web
+  }
+  bus: "EventBus" {
+    class: bridge
+  }
+  dashboard: "Dashboard" {
+    class: web
+  }
+  models: "SQLAlchemy models" {
+    class: web
+  }
+  db: "SQLite database" {
+    class: data
+    shape: cylinder
+  }
+
+  handler -> session: session
+  session -> models: SQL
+  models -> db: persist
+  handler -> bus: publish
+  bus -> dashboard: SSE
+}
+
+jetson.runtime -> bridge.ws: "session / alert"
+bridge.ws -> webquanli.handler: "/ws/jetson/{device_id}"
+webquanli.bus -> bridge.sse: "events"

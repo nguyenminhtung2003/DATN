@@ -1,0 +1,57 @@
+%% ERD dựa trên WebQuanLi/app/models.py; RFID được lưu trong drivers.rfid_tag, không có bảng rfid_cards riêng.
+erDiagram
+    USERS {
+        int id PK
+        string username UK
+    }
+
+    VEHICLES {
+        int id PK
+        string plate_number UK
+        string device_id UK
+    }
+
+    DRIVERS {
+        int id PK
+        int vehicle_id FK
+        string rfid_tag UK
+    }
+
+    DRIVER_SESSIONS {
+        int id PK
+        int vehicle_id FK
+        int driver_id FK
+        datetime checkin_at
+        datetime checkout_at
+    }
+
+    SYSTEM_ALERTS {
+        int id PK
+        int vehicle_id FK
+        int driver_id FK
+        int session_id FK
+        enum alert_type
+        enum alert_level
+        datetime timestamp
+    }
+
+    HARDWARE_STATUSES {
+        int id PK
+        int vehicle_id FK
+        datetime timestamp
+    }
+
+    OTA_AUDIT_LOGS {
+        int id PK
+        int vehicle_id FK
+        string status
+        datetime created_at
+    }
+
+    VEHICLES ||--o{ DRIVERS : "quản lý"
+    VEHICLES ||--o{ DRIVER_SESSIONS : "có phiên"
+    DRIVERS ||--o{ DRIVER_SESSIONS : "tham gia"
+    VEHICLES ||--o{ SYSTEM_ALERTS : "phát sinh"
+    DRIVER_SESSIONS ||--o{ SYSTEM_ALERTS : "ghi nhận"
+    VEHICLES ||--o{ HARDWARE_STATUSES : "báo trạng thái"
+    VEHICLES ||--o{ OTA_AUDIT_LOGS : "lưu cập nhật"
