@@ -408,6 +408,7 @@
     function addVerifyErrorAlert(data) {
         const tbody = document.getElementById('alert-log-body');
         const row = document.createElement('tr');
+        const message = data.message || verifyReasonLabel(data.reason);
         row.className = 'alert-row alert-new';
         row.innerHTML = `
         <td>${formatVietnamDateTime(new Date())}</td>
@@ -415,16 +416,37 @@
         <td><span class="badge badge-level-WARNING">WARNING</span></td>
         <td>—</td>
         <td>—</td>
-        <td>Lỗi xác thực (RFID: ${data.rfid_tag}): ${data.reason}</td>`;
+        <td>Lỗi xác thực (RFID: ${data.rfid_tag}): ${message}</td>`;
         prependAlertRow(row);
+        showVerifyStatus({
+            status: data.reason,
+            message,
+        });
         setTimeout(() => row.classList.remove('alert-new'), 2000);
+    }
+
+    function verifyReasonLabel(reason) {
+        const labels = {
+            'MISSING_VERIFIER': 'Bo xac thuc khuon mat chua san sang',
+            'NO_FACE_FRAME': 'Vui long nhin vao camera',
+            'LOW_CONFIDENCE': 'Khong du tin cay, hay giu mat on dinh',
+            'MISMATCH': 'Sai danh tinh tai xe',
+            'NO_ENROLLMENT': 'Tai xe chua co anh dang ky',
+            'UNKNOWN_ERROR': 'Loi xac thuc khong xac dinh',
+        };
+        return labels[reason] || reason || 'N/A';
     }
 
     function verifyStatusLabel(status) {
         const labels = {
             'VERIFIED': 'Đã xác minh',
             'DEMO_VERIFIED': 'Demo verified',
-            'MISMATCH': 'Sai khuôn mặt',
+            'MISMATCH': 'Sai danh tinh tai xe',
+            'MISSING_VERIFIER': 'Bo xac thuc khuon mat chua san sang',
+            'NO_FACE_FRAME': 'Vui long nhin vao camera',
+            'LOW_CONFIDENCE': 'Khong du tin cay, hay giu mat on dinh',
+            'NO_ENROLLMENT': 'Tai xe chua co anh dang ky',
+            'UNKNOWN_ERROR': 'Loi xac thuc khong xac dinh',
         };
         return labels[status] || status || 'N/A';
     }

@@ -6,6 +6,7 @@ full-hardware smoke checks on Jetson Nano.
 Usage:
   python3 scripts/test_demo_readiness.py --mode simulate
   python3 scripts/test_demo_readiness.py --mode identity-sim
+  python3 scripts/test_demo_readiness.py --mode drowsiness-demo
   python3 scripts/test_demo_readiness.py --mode hardware
 """
 import argparse
@@ -19,6 +20,22 @@ from unittest.mock import MagicMock, patch
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
+
+
+def _load_env_file(path):
+    if not os.path.exists(path):
+        return False
+    with open(path, "r", encoding="utf-8") as handle:
+        for raw_line in handle:
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key = key.strip()
+            value = value.strip().strip("\"'")
+            if key:
+                os.environ.setdefault(key, value)
+    return True
 
 
 def _install_host_safe_mocks():
@@ -247,14 +264,115 @@ def run_identity_simulation():
         config.DEMO_MODE_ALLOW_UNVERIFIED = original_demo_mode
 
 
+def _scenario_event(level, ear, mar, pitch, perclos, ai_state, ai_confidence, ai_reason):
+    return SimpleNamespace(
+        level=level,
+        ear=ear,
+        mar=mar,
+        pitch=pitch,
+        perclos=perclos,
+        ai_state=ai_state,
+        ai_confidence=ai_confidence,
+        ai_reason=ai_reason,
+    )
+
+
+def run_drowsiness_demo_simulation():
+    """Exercise demo drowsiness alert payloads without real camera hardware."""
+    _install_host_safe_mocks()
+
+    import config
+    from main import DrowsiGuard
+    from state_machine import State
+
+    original_features = dict(config.FEATURES)
+    original_demo_mode = config.DEMO_MODE_ALLOW_UNVERIFIED
+    config.FEATURES = {
+        "camera": False,
+        "drowsiness": False,
+        "rfid": False,
+        "gps": False,
+        "buzzer": False,
+        "led": False,
+        "speaker": False,
+        "websocket": False,
+        "ota": False,
+        "face_verify": False,
+    }
+    config.DEMO_MODE_ALLOW_UNVERIFIED = False
+
+    scenarios = [
+        ("normal-baseline", _scenario_event(0, 0.31, 0.18, -2.0, 0.02, "NORMAL", 0.92, "Normal face posture")),
+        ("closed-eyes-warning", _scenario_event(1, 0.18, 0.20, -3.0, 0.38, "DROWSY", 0.88, "Eyes closed warning")),
+        ("yawn-warning", _scenario_event(1, 0.30, 0.63, -2.0, 0.12, "YAWNING", 0.86, "Mouth open warning")),
+        ("head-down-warning", _scenario_event(2, 0.29, 0.22, -18.0, 0.18, "HEAD_DOWN", 0.82, "Head down warning")),
+        ("recovery-normal", _scenario_event(0, 0.31, 0.18, -2.0, 0.03, "NORMAL", 0.92, "Recovered to normal")),
+    ]
+    required_fields = {"level", "ear", "mar", "perclos", "ai_state", "ai_confidence"}
+
+    try:
+        with patch("main.LocalQueue") as local_queue_class:
+            app = DrowsiGuard()
+            app.local_queue = local_queue_class.return_value
+            app.state.transition(State.IDLE, "drowsiness demo bootstrap")
+            app.state.transition(State.VERIFYING_DRIVER, "drowsiness demo verified start")
+            app._start_verified_session("SIM-UID-001")
+            app.local_queue.push.reset_mock()
+
+            print("[DROWSINESS] Running fixed drowsiness demo checks...")
+            all_passed = True
+            for name, event in scenarios:
+                app._on_alert(event)
+                queued = _queued_events(app)
+                alert_events = [item["data"] for item in queued if item["type"] == "alert"]
+                payload = alert_events[-1] if alert_events else {}
+                missing = sorted(required_fields.difference(payload.keys()))
+                if missing:
+                    all_passed = False
+                    print("[DROWSINESS] {0}: FAIL missing fields -> {1}".format(name, ", ".join(missing)))
+                    print("  payload: {0}".format(payload))
+                else:
+                    print("[DROWSINESS] {0}: PASS {1}".format(name, payload))
+                app.local_queue.push.reset_mock()
+
+            if all_passed:
+                print("[DROWSINESS] PASS: drowsiness demo alert payloads are ready.")
+                return 0
+            print("[DROWSINESS] FAIL: drowsiness demo payload check failed.")
+            return 1
+    finally:
+        config.FEATURES = original_features
+        config.DEMO_MODE_ALLOW_UNVERIFIED = original_demo_mode
+
+
 def run_hardware_probe():
     """Run safe read-only checks against the actual Jetson environment."""
+    env_path = os.path.join(ROOT_DIR, "drowsiguard.env")
+    env_loaded = _load_env_file(env_path)
+
     import config
     import healthcheck
     from sensors.gps_reader import GPSReader
 
     print("[HW] Running quick healthcheck...")
+    print("[HW] Env file: {0}".format(env_path if env_loaded else "not found"))
     healthcheck_exit = healthcheck.run_healthcheck(quick=True)
+    demo_rfid_uid, reference_count = healthcheck._face_reference_count()
+
+    print("[HW] Demo gate summary:")
+    print(
+        "  - DROWSIGUARD_DEMO_MODE={0}".format(
+            "false" if not config.DEMO_MODE_ALLOW_UNVERIFIED else "true"
+        )
+    )
+    print(
+        "  - face_verify={0}".format(
+            "true" if config.FEATURES.get("face_verify") else "false"
+        )
+    )
+    print("  - threshold={0:.3f}".format(config.FACE_VERIFY_THRESHOLD))
+    print("  - face_references {0}={1}".format(demo_rfid_uid, reference_count))
+    print("  - websocket_url={0}".format(config.WS_SERVER_URL))
 
     print("[HW] Checking RFID input visibility...")
     event_devices = glob.glob("/dev/input/event*")
@@ -283,9 +401,12 @@ def main():
     parser = argparse.ArgumentParser(description="Separate smoke checker for DrowsiGuard demo readiness")
     parser.add_argument(
         "--mode",
-        choices=("simulate", "identity-sim", "hardware"),
+        choices=("simulate", "identity-sim", "drowsiness-demo", "hardware"),
         default="simulate",
-        help="simulate: host-safe event flow, identity-sim: fixed identity checks, hardware: read-only Jetson probes",
+        help=(
+            "simulate: host-safe event flow, identity-sim: fixed identity checks, "
+            "drowsiness-demo: fixed drowsiness alert payload checks, hardware: read-only Jetson probes"
+        ),
     )
     args = parser.parse_args()
 
@@ -293,6 +414,8 @@ def main():
         return run_hardware_probe()
     if args.mode == "identity-sim":
         return run_identity_simulation()
+    if args.mode == "drowsiness-demo":
+        return run_drowsiness_demo_simulation()
     return run_simulation()
 
 

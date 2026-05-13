@@ -63,6 +63,22 @@ class TestVerifyFlow(unittest.TestCase):
     def queued_messages(self, event_type):
         return [call[0][1] for call in self.app.local_queue.push.call_args_list if call[0][0] == event_type]
 
+    def assert_verify_error_message(self, reason, expected_message):
+        messages = self.queued_messages("verify_error")
+        for message in messages:
+            if message.get("reason") == reason:
+                self.assertEqual(message.get("message"), expected_message)
+                return
+        self.fail(f"Expected verify_error reason={reason} but not found")
+
+    def assert_verify_snapshot_message(self, status, expected_message):
+        messages = self.queued_messages("verify_snapshot")
+        for message in messages:
+            if message.get("status") == status:
+                self.assertEqual(message.get("message"), expected_message)
+                return
+        self.fail(f"Expected verify_snapshot status={status} but not found")
+
     def test_missing_verifier_demo_off(self):
         config.DEMO_MODE_ALLOW_UNVERIFIED = False
         self.app.verifier = None
@@ -94,6 +110,7 @@ class TestVerifyFlow(unittest.TestCase):
             self.app._verify_driver("UID-123")
         self.assertEqual(self.app.state.state, State.IDLE)
         self.verify_rejection_called("verify_error", "reason", "NO_ENROLLMENT")
+        self.assert_verify_error_message("NO_ENROLLMENT", "Tai xe chua co anh dang ky")
 
     def test_blocked_demo_on(self):
         config.DEMO_MODE_ALLOW_UNVERIFIED = True
@@ -125,6 +142,7 @@ class TestVerifyFlow(unittest.TestCase):
 
         self.assertEqual(self.app.state.state, State.IDLE)
         self.verify_rejection_called("verify_error", "reason", "NO_FACE_FRAME")
+        self.assert_verify_error_message("NO_FACE_FRAME", "Vui long nhin vao camera")
         self.assertEqual(self.queued_messages("face_mismatch"), [])
 
     def test_mismatch(self):
@@ -141,6 +159,7 @@ class TestVerifyFlow(unittest.TestCase):
             self.app._verify_driver("UID-123")
         self.assertEqual(self.app.state.state, State.IDLE)
         self.verify_rejection_called("face_mismatch", "expected", "unknown")
+        self.assert_verify_snapshot_message("MISMATCH", "Sai danh tinh tai xe")
 
     def test_match(self):
         mock_verifier = Mock()
@@ -172,6 +191,7 @@ class TestVerifyFlow(unittest.TestCase):
 
         self.assertEqual(self.app.state.state, State.IDLE)
         self.verify_rejection_called("verify_error", "reason", "NO_FACE_FRAME")
+        self.assert_verify_error_message("NO_FACE_FRAME", "Vui long nhin vao camera")
         self.assertEqual(self.queued_messages("session_start"), [])
         mock_verifier.verify.assert_not_called()
 
@@ -282,6 +302,7 @@ class TestVerifyFlow(unittest.TestCase):
         self.assertEqual(self.app.state.state, State.IDLE)
         speaker.play_prompt.assert_called_with("failed_identity")
         self.verify_rejection_called("verify_error", "reason", "LOW_CONFIDENCE")
+        self.assert_verify_error_message("LOW_CONFIDENCE", "Khong du tin cay, hay giu mat on dinh")
         self.assertEqual(self.queued_messages("face_mismatch"), [])
         self.assertEqual(self.queued_messages("session_start"), [])
 
@@ -298,6 +319,7 @@ class TestVerifyFlow(unittest.TestCase):
 
         speaker.play_prompt.assert_called_with("no_enrollment")
         self.verify_rejection_called("verify_error", "reason", "NO_ENROLLMENT")
+        self.assert_verify_error_message("NO_ENROLLMENT", "Tai xe chua co anh dang ky")
 
 if __name__ == "__main__":
     unittest.main()

@@ -355,6 +355,7 @@ class VerifyErrorData(BaseModel):
         "UNKNOWN_ERROR",
         "MISMATCH",
     ]
+    message: Optional[str] = None
     timestamp: Optional[float] = None
 
 

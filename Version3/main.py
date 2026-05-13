@@ -473,7 +473,7 @@ class DrowsiGuard:
         if not self.verifier:
             if getattr(config, "DEMO_MODE_ALLOW_UNVERIFIED", False):
                 logger.warning("Face verifier not available — DEMO MODE: entering RUNNING without verification")
-                self.local_queue.push("verify_error", {"rfid_tag": uid, "reason": "MISSING_VERIFIER", "timestamp": time.time()})
+                self._push_verify_error(uid, "MISSING_VERIFIER")
                 self._start_demo_session(uid, "Demo mode: face verifier is not available, session allowed")
             else:
                 logger.warning("Face verifier not available and DEMO_MODE_ALLOW_UNVERIFIED is False. Rejecting session.")
@@ -483,7 +483,7 @@ class DrowsiGuard:
         if self._verifier_has_enrollment(uid) is False:
             logger.info(f"UID={uid} has no local enrollment")
             if getattr(config, "DEMO_MODE_ALLOW_UNVERIFIED", False):
-                self.local_queue.push("verify_error", {"rfid_tag": uid, "reason": "NO_ENROLLMENT", "timestamp": time.time()})
+                self._push_verify_error(uid, "NO_ENROLLMENT")
                 self._start_demo_session(uid, "Demo mode: no enrollment available for this RFID")
             else:
                 self._reject_verification(uid, "NO_ENROLLMENT", "fail-safe: no enrollment")
@@ -493,7 +493,7 @@ class DrowsiGuard:
         if self._is_empty_frame(face_frame):
             logger.warning(f"No usable face crop captured for UID={uid}")
             if getattr(config, "DEMO_MODE_ALLOW_UNVERIFIED", False):
-                self.local_queue.push("verify_error", {"rfid_tag": uid, "reason": "NO_FACE_FRAME", "timestamp": time.time()})
+                self._push_verify_error(uid, "NO_FACE_FRAME")
                 self._start_demo_session(uid, "Demo mode: face frame not available, session allowed")
             else:
                 self._reject_verification(uid, "NO_FACE_FRAME", "fail-safe: no face frame")
@@ -504,14 +504,15 @@ class DrowsiGuard:
         if result == VerifyResult.MATCH:
             self._start_verified_session(uid)
         elif result == VerifyResult.MISMATCH:
-            self._set_verify_status("MISMATCH", "Face does not match registered driver")
+            message = self._verify_failure_message("MISMATCH")
+            self._set_verify_status("MISMATCH", message)
             self._play_verify_prompt("failed_identity")
             logger.warning(f"❌ [VERIFY FAIL] Face mismatch UID={uid}!")
             self.state.transition(State.MISMATCH_ALERT, f"face mismatch UID={uid}")
             self.local_queue.push("verify_snapshot", {
                 "rfid_tag": uid,
                 "status": "MISMATCH",
-                "message": "Face does not match registered driver",
+                "message": message,
                 "timestamp": time.time(),
             })
             self.local_queue.push("face_mismatch", {"rfid_tag": uid, "expected": "unknown", "timestamp": time.time()})
@@ -520,7 +521,7 @@ class DrowsiGuard:
         elif result in (VerifyResult.BLOCKED, VerifyResult.LOW_CONFIDENCE):
             reason = "NO_ENROLLMENT" if result == VerifyResult.BLOCKED else "LOW_CONFIDENCE"
             if getattr(config, "DEMO_MODE_ALLOW_UNVERIFIED", False):
-                self.local_queue.push("verify_error", {"rfid_tag": uid, "reason": reason, "timestamp": time.time()})
+                self._push_verify_error(uid, reason)
                 logger.info(f"Verify returned {result} — DEMO MODE: allowing session")
                 self._start_demo_session(uid, f"Demo mode: verification returned {result}, session allowed")
             else:
@@ -698,13 +699,21 @@ class DrowsiGuard:
         return True
 
     def _reject_verification(self, uid: str, reason: str, state_reason: str):
-        self._set_verify_status(reason, state_reason)
-        self.local_queue.push("verify_error", {"rfid_tag": uid, "reason": reason, "timestamp": time.time()})
+        self._set_verify_status(reason, self._verify_failure_message(reason))
+        self._push_verify_error(uid, reason)
         prompt_name = self._prompt_for_verify_failure(reason)
         if prompt_name:
             self._play_verify_prompt(prompt_name)
         time.sleep(2.0)
         self.state.transition(State.IDLE, state_reason)
+
+    def _push_verify_error(self, uid: str, reason: str):
+        self.local_queue.push("verify_error", {
+            "rfid_tag": uid,
+            "reason": reason,
+            "message": self._verify_failure_message(reason),
+            "timestamp": time.time(),
+        })
 
     def _verifier_has_enrollment(self, uid: str):
         has_enrollment = getattr(self.verifier, "has_enrollment", None)
@@ -794,12 +803,8 @@ class DrowsiGuard:
             return True
 
         self._reverify_fail_count += 1
-        self._set_verify_status(reason, f"Periodic reverification failed: {reason}")
-        self.local_queue.push("verify_error", {
-            "rfid_tag": self._current_driver_uid,
-            "reason": reason,
-            "timestamp": time.time(),
-        })
+        self._set_verify_status(reason, self._verify_failure_message(reason))
+        self._push_verify_error(self._current_driver_uid, reason)
         logger.warning(
             f"Reverification failed UID={self._current_driver_uid} "
             f"reason={reason} count={self._reverify_fail_count}"
@@ -900,6 +905,19 @@ class DrowsiGuard:
         if not ok:
             logger.warning("[VERIFY AUDIO] prompt=%s returned failure", prompt_name)
         return bool(ok)
+
+    @staticmethod
+    def _verify_failure_message(reason: str) -> str:
+        messages = {
+            "MISSING_VERIFIER": "Bo xac thuc khuon mat chua san sang",
+            "NO_FACE_FRAME": "Vui long nhin vao camera",
+            "LOW_CONFIDENCE": "Khong du tin cay, hay giu mat on dinh",
+            "MISMATCH": "Sai danh tinh tai xe",
+            "NO_ENROLLMENT": "Tai xe chua co anh dang ky",
+            "UNKNOWN_ERROR": "Loi xac thuc khong xac dinh",
+            "BLOCKED": "Tai xe chua co anh dang ky",
+        }
+        return messages.get(reason, reason or "Loi xac thuc khong xac dinh")
 
     @staticmethod
     def _prompt_for_verify_failure(reason: str):

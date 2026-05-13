@@ -8,6 +8,7 @@ is expected to exist on the target Jetson.
 """
 
 import argparse
+import glob
 import importlib.util
 import os
 import shutil
@@ -130,6 +131,58 @@ def _rfid_dependency_status():
     return ("PASS", "rfid_dependency", "raw HID fallback available; evdev optional")
 
 
+def _face_reference_count(rfid_uid=None):
+    uid = rfid_uid or os.getenv("DROWSIGUARD_DEMO_RFID_UID", "0199190080")
+    driver_dir = Path(config.FACE_DATA_DIR).expanduser() / uid
+    candidates = []
+    primary = driver_dir / "reference.jpg"
+    if primary.exists():
+        candidates.append(primary)
+    candidates.extend(path for path in driver_dir.glob("ref_*.jpg") if path.is_file())
+    return uid, len(candidates)
+
+
+def _camera_alive_status(quick: bool):
+    if not config.FEATURES.get("camera"):
+        return ("WARN", "camera_alive", "DROWSIGUARD_FEATURE_CAMERA=false")
+    if not _module_available("cv2"):
+        return ("WARN", "camera_alive", "OpenCV missing; cannot probe camera")
+    if quick:
+        return ("PASS", "camera_alive", "quick mode dependency-only check")
+    try:
+        import cv2
+
+        capture = cv2.VideoCapture(0)
+        try:
+            opened = capture.isOpened()
+        finally:
+            capture.release()
+    except Exception as exc:
+        return ("WARN", "camera_alive", f"camera probe failed: {exc}")
+    if opened:
+        return ("PASS", "camera_alive", "camera opened")
+    return ("WARN", "camera_alive", "camera did not open")
+
+
+def _rfid_reader_status():
+    if not config.FEATURES.get("rfid"):
+        return ("WARN", "rfid_reader", "DROWSIGUARD_FEATURE_RFID=false")
+    configured_path = getattr(config, "RFID_DEVICE_PATH", "")
+    if configured_path:
+        status = "PASS" if _file_exists(configured_path) else "WARN"
+        detail = configured_path if status == "PASS" else f"{configured_path} not found"
+        return (status, "rfid_reader", detail)
+    event_devices = glob.glob("/dev/input/event*")
+    if event_devices:
+        return ("PASS", "rfid_reader", f"{len(event_devices)} input event device(s) visible")
+    return ("WARN", "rfid_reader", "no RFID device path configured and no /dev/input/event* visible")
+
+
+def _dashboard_reachability_status(port):
+    status, _, detail = _dashboard_port_status(port)
+    return (status, "dashboard_reachability", detail)
+
+
 def _record(results, status: str, name: str, detail: str):
     results.append((status, name, detail))
 
@@ -161,6 +214,29 @@ def run_healthcheck(quick: bool = False) -> int:
         "strict_mode",
         "DROWSIGUARD_DEMO_MODE=false" if strict else "demo mode allows unverified sessions",
     )
+    face_verify_enabled = bool(config.FEATURES.get("face_verify"))
+    _record(
+        results,
+        "PASS" if face_verify_enabled else "WARN",
+        "face_verify",
+        "DROWSIGUARD_FEATURE_FACE_VERIFY=true"
+        if face_verify_enabled
+        else "DROWSIGUARD_FEATURE_FACE_VERIFY=false",
+    )
+    threshold = getattr(config, "FACE_VERIFY_THRESHOLD", None)
+    _record(
+        results,
+        "PASS" if threshold is not None else "WARN",
+        "face_threshold",
+        f"{threshold:.3f}" if isinstance(threshold, (int, float)) else "not configured",
+    )
+    demo_rfid_uid, reference_count = _face_reference_count()
+    _record(
+        results,
+        "PASS" if reference_count > 0 else "WARN",
+        "face_reference_count",
+        f"{demo_rfid_uid} references={reference_count}",
+    )
 
     _record(
         results,
@@ -182,6 +258,7 @@ def run_healthcheck(quick: bool = False) -> int:
             "camera_dependency",
             "cv2 available" if _module_available("cv2") else "OpenCV not installed in this environment",
         )
+    _record(results, *_camera_alive_status(quick))
     if config.FEATURES.get("drowsiness"):
         _record(
             results,
@@ -206,6 +283,7 @@ def run_healthcheck(quick: bool = False) -> int:
         _record(results, *_clock_status())
     if config.FEATURES.get("rfid"):
         _record(results, *_rfid_dependency_status())
+    _record(results, *_rfid_reader_status())
     if config.FEATURES.get("gps"):
         _record(results, "PASS", "gps_feature", f"enabled on {config.GPS_PORT}")
     elif not quick:
@@ -267,6 +345,7 @@ def run_healthcheck(quick: bool = False) -> int:
         backend_detail,
     )
 
+    _record(results, *_dashboard_reachability_status(config.DASHBOARD_PORT))
     _record(results, *_dashboard_port_status(config.DASHBOARD_PORT))
 
     width = max(len(name) for _, name, _ in results)

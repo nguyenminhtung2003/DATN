@@ -19,6 +19,10 @@ env/
 
 .pytest_cache/
 .mypy_cache/
+.pytest_deps/
+.test_tmp/
+.tmp/
+.deploy/
 
 .vscode/
 .idea/
