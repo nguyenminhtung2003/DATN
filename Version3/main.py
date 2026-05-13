@@ -460,6 +460,7 @@ class DrowsiGuard:
             self._set_verify_status("VERIFYING", "RFID scanned; awaiting face verification")
             self._emit_driver_probe(uid)
             self.state.transition(State.VERIFYING_DRIVER, f"RFID scan UID={uid}")
+            self._clear_cached_face_for_verification()
             self._play_verify_prompt("prepare_countdown", wait=True)
             self._verify_driver(uid)
         elif self.state.state == State.RUNNING:
@@ -714,12 +715,19 @@ class DrowsiGuard:
                 return None
         return None
 
+    def _clear_cached_face_for_verification(self):
+        clear_good_face = getattr(self.frame_buffer, "clear_good_face", None)
+        if callable(clear_good_face):
+            clear_good_face()
+
     def _acquire_face_crop(self):
-        face_frame, bbox, _ = self.frame_buffer.get_good_face_frame()
-        if not self._is_empty_frame(face_frame):
+        face_frame, bbox, face_ts = self.frame_buffer.get_good_face_frame()
+        if not self._is_empty_frame(face_frame) and self._is_recent_good_face(face_ts):
             crop = self.verifier.extract_face(face_frame, bbox)
             if not self._is_empty_frame(crop):
                 return crop, bbox
+        elif not self._is_empty_frame(face_frame):
+            logger.info("Ignoring stale cached face frame for verification")
 
         if not config.FEATURES.get("camera", True) or not self.face_analyzer:
             return None, None
@@ -748,6 +756,16 @@ class DrowsiGuard:
             time.sleep(poll_interval)
 
         return None, None
+
+    @staticmethod
+    def _is_recent_good_face(face_ts) -> bool:
+        if not face_ts:
+            return True
+        max_age = getattr(config, "FACE_VERIFY_GOOD_FACE_MAX_AGE_SEC", 0.8)
+        try:
+            return (time.time() - float(face_ts)) <= max_age
+        except (TypeError, ValueError):
+            return False
 
     def _maybe_reverify(self, now=None):
         if self.state.state != State.RUNNING or not self._session_active:
@@ -887,8 +905,10 @@ class DrowsiGuard:
     def _prompt_for_verify_failure(reason: str):
         if reason in {"MISSING_VERIFIER", "NO_ENROLLMENT", "BLOCKED"}:
             return "no_enrollment"
-        if reason in {"NO_FACE_FRAME", "LOW_CONFIDENCE", "UNKNOWN_ERROR"}:
+        if reason == "NO_FACE_FRAME":
             return "no_face"
+        if reason in {"LOW_CONFIDENCE", "UNKNOWN_ERROR"}:
+            return "failed_identity"
         return None
 
     def _set_verify_status(self, status: str, reason: str = ""):

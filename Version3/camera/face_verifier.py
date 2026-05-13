@@ -51,6 +51,9 @@ class FaceVerifier:
         )
 
     def has_enrollment(self, rfid_uid: str) -> bool:
+        reference_paths = getattr(self.registry, "reference_paths", None)
+        if callable(reference_paths):
+            return bool(reference_paths(rfid_uid))
         return self.registry.has_enrollment(rfid_uid)
 
     @property
@@ -63,7 +66,8 @@ class FaceVerifier:
 
     def verify(self, face_frame, rfid_uid: str) -> str:
         """Verify a cropped face against the enrolled driver."""
-        if not self.has_enrollment(rfid_uid):
+        reference_paths = self._reference_paths_for_uid(rfid_uid)
+        if not reference_paths:
             logger.info(f"No enrollment available for UID={rfid_uid}")
             return VerifyResult.BLOCKED
 
@@ -71,29 +75,88 @@ class FaceVerifier:
             logger.warning("Verification requested without a usable face crop")
             return VerifyResult.LOW_CONFIDENCE
 
-        reference = self._load_image(self.registry.reference_path(rfid_uid))
-        if self._is_empty_image(reference):
-            logger.warning(f"Enrollment image for UID={rfid_uid} could not be read")
-            return VerifyResult.BLOCKED
-
         probe_gray = self._prepare_image(face_frame)
-        reference_gray = self._prepare_image(reference)
-        if probe_gray is None or reference_gray is None:
+        if probe_gray is None:
             logger.warning("Failed to normalize face image for comparison")
             return VerifyResult.LOW_CONFIDENCE
 
-        if self._should_try_lbph():
-            lbph_result = self._verify_with_lbph(reference_gray, probe_gray)
-            if lbph_result is not None:
-                return lbph_result
+        valid_references = []
+        for reference_path in reference_paths:
+            reference = self._load_image(reference_path)
+            if self._is_empty_image(reference):
+                logger.warning(f"Enrollment image for UID={rfid_uid} could not be read: {reference_path}")
+                continue
+            reference_gray = self._prepare_image(reference)
+            if reference_gray is None:
+                logger.warning(f"Failed to normalize enrollment image for UID={rfid_uid}: {reference_path}")
+                continue
+            valid_references.append((reference_path, reference_gray))
 
-        score = self._fallback_similarity(reference_gray, probe_gray)
-        logger.info(f"[FaceVerifier] Fallback score UID={rfid_uid}: {score:.3f}")
-        if score >= config.FACE_VERIFY_THRESHOLD:
+        if not valid_references:
+            logger.warning(f"No readable enrollment images for UID={rfid_uid}")
+            return VerifyResult.BLOCKED
+
+        lbph_result = self._verify_with_lbph_references(rfid_uid, valid_references, probe_gray)
+        if lbph_result is not None:
+            return lbph_result
+
+        best_path = None
+        best_score = -1.0
+        for reference_path, reference_gray in valid_references:
+            score = self._fallback_similarity(reference_gray, probe_gray)
+            if score > best_score:
+                best_score = score
+                best_path = reference_path
+
+        threshold = config.FACE_VERIFY_THRESHOLD
+        logger.info(
+            "[FaceVerifier] Fallback best score UID=%s references=%d best=%s score=%.3f threshold=%.3f",
+            rfid_uid,
+            len(valid_references),
+            os.path.basename(best_path or ""),
+            best_score,
+            threshold,
+        )
+        if best_score >= threshold:
             return VerifyResult.MATCH
-        if score <= max(0.0, config.FACE_VERIFY_THRESHOLD - 0.18):
+        if best_score <= max(0.0, threshold - 0.18):
             return VerifyResult.MISMATCH
         return VerifyResult.LOW_CONFIDENCE
+
+    def _reference_paths_for_uid(self, rfid_uid: str):
+        reference_paths = getattr(self.registry, "reference_paths", None)
+        if callable(reference_paths):
+            return reference_paths(rfid_uid)
+        if self.registry.has_enrollment(rfid_uid):
+            return [self.registry.reference_path(rfid_uid)]
+        return []
+
+    def _verify_with_lbph_references(self, rfid_uid: str, valid_references, probe_gray):
+        if not self._should_try_lbph():
+            return None
+
+        saw_low_confidence = False
+        saw_mismatch = False
+        for reference_path, reference_gray in valid_references:
+            result = self._verify_with_lbph(reference_gray, probe_gray)
+            logger.info(
+                "[FaceVerifier] LBPH result UID=%s reference=%s result=%s",
+                rfid_uid,
+                os.path.basename(reference_path),
+                result,
+            )
+            if result == VerifyResult.MATCH:
+                return VerifyResult.MATCH
+            if result == VerifyResult.LOW_CONFIDENCE:
+                saw_low_confidence = True
+            elif result == VerifyResult.MISMATCH:
+                saw_mismatch = True
+
+        if self.method == "lbph":
+            return VerifyResult.LOW_CONFIDENCE if saw_low_confidence else VerifyResult.MISMATCH
+        if saw_mismatch or saw_low_confidence:
+            return None
+        return None
 
     def enroll_driver(self, rfid_uid: str, face_frame, driver_name: str = None):
         """Enroll a driver's face for future verification."""
@@ -120,6 +183,22 @@ class FaceVerifier:
         )
         return True
 
+    @staticmethod
+    def _haar_cascade_path():
+        data_module = getattr(cv2, "data", None)
+        data_dir = getattr(data_module, "haarcascades", "") if data_module is not None else ""
+        candidates = []
+        if data_dir:
+            candidates.append(os.path.join(data_dir, "haarcascade_frontalface_default.xml"))
+        candidates.extend([
+            "/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml",
+            "/usr/share/opencv/haarcascades/haarcascade_frontalface_default.xml",
+        ])
+        for candidate in candidates:
+            if candidate and os.path.exists(candidate):
+                return candidate
+        return None
+
     def detect_and_crop_face(self, image):
         """Best-effort face crop for manual enrollment."""
         if self._is_empty_image(image):
@@ -132,8 +211,8 @@ class FaceVerifier:
         if gray is None:
             return image
 
-        cascade_path = getattr(cv2.data, "haarcascades", "") + "haarcascade_frontalface_default.xml"
-        if not cascade_path or not os.path.exists(cascade_path):
+        cascade_path = self._haar_cascade_path()
+        if not cascade_path:
             return image
 
         detector = cv2.CascadeClassifier(cascade_path)

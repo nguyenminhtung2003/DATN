@@ -157,6 +157,24 @@ class TestVerifyFlow(unittest.TestCase):
         self.assertEqual(self.app._current_driver_uid, "UID-123")
         self.verify_snapshot_called("VERIFIED")
 
+    def test_stale_cached_face_is_rejected_as_no_face(self):
+        mock_verifier = Mock()
+        mock_verifier.has_enrollment.return_value = True
+        mock_verifier.extract_face.side_effect = lambda frame, bbox: frame
+        mock_verifier.verify.return_value = VerifyResult.MATCH
+        self.app.verifier = mock_verifier
+        self.app.frame_buffer = Mock()
+        self.app.frame_buffer.get_good_face_frame.return_value = ([[123]], None, 1.0)
+
+        self.app.state.transition(State.VERIFYING_DRIVER)
+        with patch("time.sleep", return_value=None):
+            self.app._verify_driver("UID-123")
+
+        self.assertEqual(self.app.state.state, State.IDLE)
+        self.verify_rejection_called("verify_error", "reason", "NO_FACE_FRAME")
+        self.assertEqual(self.queued_messages("session_start"), [])
+        mock_verifier.verify.assert_not_called()
+
     def test_rfid_scan_emits_driver_event_before_verification(self):
         config.DEMO_MODE_ALLOW_UNVERIFIED = False
         mock_verifier = Mock()
@@ -245,6 +263,27 @@ class TestVerifyFlow(unittest.TestCase):
 
         speaker.play_prompt.assert_called_with("no_face")
         self.verify_rejection_called("verify_error", "reason", "NO_FACE_FRAME")
+
+    def test_low_confidence_with_face_plays_failed_identity_prompt_and_reports_low_confidence(self):
+        config.DEMO_MODE_ALLOW_UNVERIFIED = False
+        speaker = self.attach_prompt_speaker()
+        mock_verifier = Mock()
+        mock_verifier.has_enrollment.return_value = True
+        mock_verifier.extract_face.side_effect = lambda frame, bbox: frame
+        mock_verifier.verify.return_value = VerifyResult.LOW_CONFIDENCE
+        self.app.verifier = mock_verifier
+        self.app.frame_buffer = Mock()
+        self.app.frame_buffer.get_good_face_frame.return_value = ([[123]], None, 0)
+
+        self.app.state.transition(State.VERIFYING_DRIVER)
+        with patch("time.sleep", return_value=None):
+            self.app._verify_driver("UID-123")
+
+        self.assertEqual(self.app.state.state, State.IDLE)
+        speaker.play_prompt.assert_called_with("failed_identity")
+        self.verify_rejection_called("verify_error", "reason", "LOW_CONFIDENCE")
+        self.assertEqual(self.queued_messages("face_mismatch"), [])
+        self.assertEqual(self.queued_messages("session_start"), [])
 
     def test_no_enrollment_plays_no_enrollment_prompt(self):
         config.DEMO_MODE_ALLOW_UNVERIFIED = False

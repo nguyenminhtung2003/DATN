@@ -29,6 +29,30 @@ class DriverRegistry:
     def reference_path(self, rfid_uid: str) -> str:
         return os.path.join(self.driver_dir(rfid_uid), "reference.jpg")
 
+    def reference_slot_path(self, rfid_uid: str, slot: int) -> str:
+        try:
+            slot_num = int(slot)
+        except (TypeError, ValueError):
+            raise ValueError("reference slot must be an integer from 1 to 5")
+        if slot_num < 1 or slot_num > 5:
+            raise ValueError("reference slot must be from 1 to 5")
+        return os.path.join(self.driver_dir(rfid_uid), "ref_%02d.jpg" % slot_num)
+
+    def reference_paths(self, rfid_uid: str) -> list:
+        paths = []
+        primary = self.reference_path(rfid_uid)
+        if os.path.isfile(primary):
+            paths.append(primary)
+
+        driver_dir = Path(self.driver_dir(rfid_uid))
+        if not driver_dir.exists() or not driver_dir.is_dir():
+            return paths
+
+        for candidate in sorted(driver_dir.glob("ref_*.jpg")):
+            if candidate.is_file():
+                paths.append(str(candidate))
+        return paths
+
     def has_enrollment(self, rfid_uid: str) -> bool:
         return os.path.exists(self.reference_path(rfid_uid))
 
@@ -86,6 +110,13 @@ class DriverRegistry:
         driver_dir = self.driver_dir(rfid_uid)
         os.makedirs(driver_dir, exist_ok=True)
         shutil.copyfile(source_path, self.reference_path(rfid_uid))
+
+    def copy_extra_reference_file(self, rfid_uid: str, source_path: str, slot: int):
+        driver_dir = self.driver_dir(rfid_uid)
+        os.makedirs(driver_dir, exist_ok=True)
+        target_path = self.reference_slot_path(rfid_uid, slot)
+        shutil.copyfile(source_path, target_path)
+        return target_path
 
     def sync_from_manifest_url(self, manifest_url: str) -> dict:
         logger.info(f"Syncing driver registry from {manifest_url}")

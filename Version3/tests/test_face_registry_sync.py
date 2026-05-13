@@ -75,6 +75,43 @@ class FaceRegistrySyncTest(unittest.TestCase):
         self.assertEqual(manifest["drivers"][0]["reference_source"], "jetson_ir")
         self.assertEqual(manifest["drivers"][0]["reference_role"], "primary")
 
+    def test_reference_paths_include_primary_and_sorted_extra_references(self):
+        driver_dir = Path(config.FACE_DATA_DIR) / "UID-001"
+        driver_dir.mkdir(parents=True, exist_ok=True)
+        self._write_matrix_file(driver_dir / "reference.jpg", self._make_face())
+        self._write_matrix_file(driver_dir / "ref_02.jpg", self._make_face(eye_shift=2))
+        self._write_matrix_file(driver_dir / "ref_01.jpg", self._make_face(eye_shift=1))
+        self._write_matrix_file(driver_dir / "notes.jpg", self._make_face(background=100))
+        (driver_dir / "ref_03.jpg").mkdir()
+
+        paths = self.registry.reference_paths("UID-001")
+
+        expected = [
+            str(driver_dir / "reference.jpg"),
+            str(driver_dir / "ref_01.jpg"),
+            str(driver_dir / "ref_02.jpg"),
+        ]
+        self.assertEqual(paths, expected)
+
+    def test_copy_extra_reference_file_writes_numbered_slot_without_replacing_primary(self):
+        driver_dir = Path(config.FACE_DATA_DIR) / "UID-001"
+        driver_dir.mkdir(parents=True, exist_ok=True)
+        primary = driver_dir / "reference.jpg"
+        self._write_matrix_file(primary, self._make_face(background=40))
+
+        source = Path(self.temp_dir) / "extra.face"
+        extra_face = self._make_face(eye_shift=3, background=80)
+        self._write_matrix_file(source, extra_face)
+
+        copied = self.registry.copy_extra_reference_file("UID-001", str(source), slot=2)
+
+        self.assertEqual(copied, str(driver_dir / "ref_02.jpg"))
+        self.assertTrue(primary.exists())
+        with open(primary, "r", encoding="utf-8") as fh:
+            self.assertEqual(json.load(fh), self._make_face(background=40))
+        with open(driver_dir / "ref_02.jpg", "r", encoding="utf-8") as fh:
+            self.assertEqual(json.load(fh), extra_face)
+
     def test_verify_matches_same_reference_image(self):
         probe = self._make_face()
         self.verifier.enroll_driver("UID-001", probe, driver_name="Driver Demo")
@@ -82,6 +119,28 @@ class FaceRegistrySyncTest(unittest.TestCase):
         result = self.verifier.verify(self._make_face(), "UID-001")
 
         self.assertEqual(result, VerifyResult.MATCH)
+
+    def test_verify_uses_best_extra_reference_when_primary_scores_too_low(self):
+        driver_dir = Path(config.FACE_DATA_DIR) / "UID-001"
+        driver_dir.mkdir(parents=True, exist_ok=True)
+        self._write_matrix_file(driver_dir / "reference.jpg", self._make_face(background=100))
+        self._write_matrix_file(driver_dir / "ref_01.jpg", self._make_face())
+
+        result = self.verifier.verify(self._make_face(), "UID-001")
+
+        self.assertEqual(result, VerifyResult.MATCH)
+
+    def test_verify_returns_no_enrollment_when_all_reference_files_are_unreadable(self):
+        driver_dir = Path(config.FACE_DATA_DIR) / "UID-001"
+        driver_dir.mkdir(parents=True, exist_ok=True)
+        with open(driver_dir / "reference.jpg", "w", encoding="utf-8") as fh:
+            fh.write("not-json-image")
+        with open(driver_dir / "ref_01.jpg", "w", encoding="utf-8") as fh:
+            fh.write("not-json-image-either")
+
+        result = self.verifier.verify(self._make_face(), "UID-001")
+
+        self.assertEqual(result, VerifyResult.BLOCKED)
 
     def test_verify_rejects_clearly_different_face(self):
         probe = self._make_face()

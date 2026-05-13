@@ -48,6 +48,12 @@ class FrameBuffer:
             self._face_bbox = bbox
             self._good_face_ts = timestamp or time.time()
 
+    def clear_good_face(self):
+        with self._lock:
+            self._good_face_frame = None
+            self._face_bbox = None
+            self._good_face_ts = 0.0
+
     # ── Consumer reads ──────────────────────────────────────
 
     def get_frame(self):
