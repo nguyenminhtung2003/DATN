@@ -1,8 +1,9 @@
 {% extends "base.html" %}
 {% block title %}Trung tâm giám sát{% endblock %}
+{% block mobile_title %}Giám sát{% endblock %}
 
 {% block content %}
-<div class="trust-banking-dashboard">
+<div class="trust-banking-dashboard monitoring-compact-dashboard mobile-page mobile-page-dashboard">
     <div class="dashboard-header command-hero trust-hero">
         <div class="hero-copy">
             <span class="eyebrow">TRUST SAFETY OVERVIEW</span>
@@ -30,10 +31,18 @@
         </div>
     </div>
 
-    <div class="overview-strip">
+    <div class="overview-strip monitoring-state-strip">
         <div class="overview-chip">
             <span class="chip-label">Phiên giám sát</span>
-            <strong>{{ 'Đang hoạt động' if active_session else 'Chờ RFID' }}</strong>
+            <strong id="monitoring-session-state">
+                {% if active_session and connection_status == 'online' %}
+                Đang hoạt động
+                {% elif active_session %}
+                Mất kết nối
+                {% else %}
+                Chờ RFID
+                {% endif %}
+            </strong>
         </div>
         <div class="overview-chip">
             <span class="chip-label">Xác minh</span>
@@ -53,11 +62,34 @@
     <div id="dashboard-realtime-root" data-stream-url="/sse/vehicle/{{ device_id }}">
 
         <!-- Hardware Status -->
-        <section class="panel" id="hardware-section">
+        <section class="panel monitoring-hardware-panel" id="hardware-section">
             <h2 class="panel-title">🔧 Trạng Thái Phần Cứng</h2>
             <div class="hardware-grid" id="hardware-badges">
                 {% include "partials/hardware_status.html" %}
             </div>
+        </section>
+
+        <section class="panel monitoring-incident-panel" id="hardware-incident-section">
+            <h2 class="panel-title">🚨 Sự cố thiết bị gần đây <span class="badge badge-count">{{
+                    open_hardware_incidents|length }}</span></h2>
+            {% if open_hardware_incidents %}
+            <div class="hardware-incident-list">
+                {% for incident in open_hardware_incidents %}
+                <div class="hardware-incident-card {% if incident.is_open %}incident-open{% endif %}">
+                    <div>
+                        <strong>{{ incident.device_label }}</strong>
+                        <p>{{ incident.reason }}</p>
+                    </div>
+                    <div class="incident-meta">
+                        <span class="badge badge-danger">{{ incident.status_text }}</span>
+                        <span>{{ incident.first_seen_display }}</span>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="text-muted">Không có sự cố thiết bị đang mở</p>
+            {% endif %}
         </section>
 
         <!-- Driver Info + Map Row -->
@@ -73,7 +105,7 @@
             <!-- Map -->
             <section class="panel" id="map-section">
                 <h2 class="panel-title">🗺️ Vị Trí GPS</h2>
-                <div id="map-container" style="height: 350px; border-radius: 8px; overflow: hidden;">
+                <div id="map-container" class="map-compact-shell" style="height: 300px; border-radius: 8px; overflow: hidden;">
                     <div id="map"
                          style="width: 100%; height: 100%;"
                          data-lat="{{ latest_gps.lat if latest_gps else '' }}"
@@ -84,11 +116,11 @@
         </div>
 
         <!-- Alert Log -->
-        <section class="panel" id="alert-section">
+        <section class="panel monitoring-alert-panel" id="alert-section">
             <h2 class="panel-title">🔔 Nhật Ký Cảnh Báo <span class="badge badge-count" id="alert-count">{{
                     recent_alerts|length }}</span></h2>
-            <div class="table-responsive">
-                <table class="data-table" id="alert-table">
+            <div class="table-responsive monitoring-alert-scroll">
+                <table class="data-table mobile-card-table" id="alert-table">
                     <thead>
                         <tr>
                             <th>Thời gian</th>
@@ -377,12 +409,12 @@
         const row = document.createElement('tr');
         row.className = 'alert-row alert-new';
         row.innerHTML = `
-        <td>${formatVietnamDateTime(data.timestamp)}</td>
-        <td><span class="badge badge-type">${data.alert_type || 'DROWSINESS'}</span></td>
-        <td><span class="badge badge-level-${data.level || 'WARNING'}">${data.level || 'N/A'}</span></td>
-        <td>${data.ear ? data.ear.toFixed(2) : '—'}</td>
-        <td>${data.mar ? data.mar.toFixed(2) : '—'}</td>
-        <td>Cảnh báo buồn ngủ</td>`;
+        <td data-label="Thời gian">${formatVietnamDateTime(data.timestamp)}</td>
+        <td data-label="Loại"><span class="badge badge-type">${data.alert_type || 'DROWSINESS'}</span></td>
+        <td data-label="Mức độ"><span class="badge badge-level-${data.level || 'WARNING'}">${data.level || 'N/A'}</span></td>
+        <td data-label="EAR">${data.ear ? data.ear.toFixed(2) : '—'}</td>
+        <td data-label="MAR">${data.mar ? data.mar.toFixed(2) : '—'}</td>
+        <td data-label="Chi tiết">Cảnh báo buồn ngủ</td>`;
         prependAlertRow(row);
         setTimeout(() => row.classList.remove('alert-new'), 2000);
     }
@@ -393,12 +425,12 @@
         const row = document.createElement('tr');
         row.className = 'alert-row alert-mismatch';
         row.innerHTML = `
-        <td>${formatVietnamDateTime(data.timestamp)}</td>
-        <td><span class="badge badge-danger">FACE MISMATCH</span></td>
-        <td><span class="badge badge-level-CRITICAL">CRITICAL</span></td>
-        <td>—</td>
-        <td>—</td>
-        <td>RFID: ${data.rfid_tag} | Dự kiến: ${data.expected}</td>`;
+        <td data-label="Thời gian">${formatVietnamDateTime(data.timestamp)}</td>
+        <td data-label="Loại"><span class="badge badge-danger">FACE MISMATCH</span></td>
+        <td data-label="Mức độ"><span class="badge badge-level-CRITICAL">CRITICAL</span></td>
+        <td data-label="EAR">—</td>
+        <td data-label="MAR">—</td>
+        <td data-label="Chi tiết">RFID: ${data.rfid_tag} | Dự kiến: ${data.expected}</td>`;
         prependAlertRow(row);
         document.body.classList.add('mismatch-flash');
         setTimeout(() => document.body.classList.remove('mismatch-flash'), 3000);
@@ -411,12 +443,12 @@
         const message = data.message || verifyReasonLabel(data.reason);
         row.className = 'alert-row alert-new';
         row.innerHTML = `
-        <td>${formatVietnamDateTime(new Date())}</td>
-        <td><span class="badge" style="background-color: #6c757d;">SYSTEM ERR</span></td>
-        <td><span class="badge badge-level-WARNING">WARNING</span></td>
-        <td>—</td>
-        <td>—</td>
-        <td>Lỗi xác thực (RFID: ${data.rfid_tag}): ${message}</td>`;
+        <td data-label="Thời gian">${formatVietnamDateTime(new Date())}</td>
+        <td data-label="Loại"><span class="badge" style="background-color: #6c757d;">SYSTEM ERR</span></td>
+        <td data-label="Mức độ"><span class="badge badge-level-WARNING">WARNING</span></td>
+        <td data-label="EAR">—</td>
+        <td data-label="MAR">—</td>
+        <td data-label="Chi tiết">Lỗi xác thực (RFID: ${data.rfid_tag}): ${message}</td>`;
         prependAlertRow(row);
         showVerifyStatus({
             status: data.reason,
@@ -508,13 +540,14 @@
                 </div>
             </div>
         </div>`;
+        setMonitoringSessionText('online');
         initSessionTimer();
     }
 
     function endSession(data) {
         const timerEl = document.querySelector('.session-timer');
         if (timerEl) timerEl.dataset.stopped = 'true';
-        const activeEl = document.querySelector('.session-active');
+        const activeEl = document.querySelector('.session-active, .session-offline');
         if (activeEl) {
             activeEl.className = 'session-ended';
             activeEl.textContent = '⬛ Đã kết thúc';
@@ -523,9 +556,51 @@
         if (checkout) {
             checkout.textContent = '⏹ Check-out: ' + formatVietnamDateTime(data.checkout_at);
         }
+        setMonitoringSessionText('ended');
     }
 
     // Connection status
+    function setMonitoringSessionText(status) {
+        const stateEl = document.getElementById('monitoring-session-state');
+        if (!stateEl) return;
+        const sessionInfo = document.querySelector('.session-info');
+        if (!sessionInfo) {
+            stateEl.textContent = 'Chờ RFID';
+            return;
+        }
+        if (status === 'ended' || document.querySelector('.session-ended')) {
+            stateEl.textContent = 'Đã kết thúc';
+            return;
+        }
+        stateEl.textContent = status === 'online' ? 'Đang hoạt động' : 'Mất kết nối';
+    }
+
+    function setSessionConnectionState(status) {
+        const sessionInfo = document.querySelector('.session-info');
+        if (!sessionInfo || document.querySelector('.session-ended')) {
+            setMonitoringSessionText(status);
+            return;
+        }
+        const isOnline = status === 'online';
+        const statusEl = sessionInfo.querySelector('.session-active, .session-offline');
+        if (statusEl) {
+            statusEl.className = isOnline ? 'session-active' : 'session-offline';
+            statusEl.textContent = isOnline ? '🟢 Đang chạy' : '🔴 Tạm dừng do mất kết nối';
+        }
+        const timerEl = sessionInfo.querySelector('.session-timer');
+        if (timerEl) {
+            if (isOnline) {
+                delete timerEl.dataset.stopped;
+                initSessionTimer();
+            } else {
+                timerEl.dataset.stopped = 'true';
+                timerEl.textContent = '⏳ Thời gian lái: tạm dừng do mất kết nối';
+                if (sessionInterval) clearInterval(sessionInterval);
+            }
+        }
+        setMonitoringSessionText(status);
+    }
+
     function updateConnectionStatus(status) {
         const badge = document.getElementById('connection-status');
         if (!badge) return;
@@ -542,6 +617,7 @@
         badge.innerHTML = isOnline
             ? '<span class="status-dot online"></span><span class="connection-text">Kết nối</span>'
             : '<span class="status-dot offline"></span><span class="connection-text">Mất kết nối</span>';
+        setSessionConnectionState(isOnline ? 'online' : 'offline');
     }
 
     initDashboardEventSource();

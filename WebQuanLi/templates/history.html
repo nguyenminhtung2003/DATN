@@ -1,13 +1,15 @@
 {% extends "base.html" %}
 {% block title %}Lịch Sử{% endblock %}
+{% block mobile_title %}Lịch sử{% endblock %}
 
 {% block content %}
+<div class="mobile-page mobile-page-history">
 <div class="dashboard-header">
     <h1>Lịch sử cảnh báo và ca làm việc</h1>
 </div>
 
-<section class="panel">
-    <h2 class="panel-title">Bộ lọc</h2>
+<details class="panel mobile-filter-drawer" open>
+    <summary class="panel-title mobile-filter-summary">Bộ lọc</summary>
     <form method="GET" action="/history" class="filter-form" id="history-filter">
         <div class="filter-grid">
             <div class="form-group">
@@ -66,7 +68,7 @@
         <input type="hidden" name="q" value="{{ filters.q }}">
     </form>
     {% endif %}
-</section>
+</details>
 
 <section class="panel">
     <div class="history-header-row">
@@ -80,7 +82,7 @@
     {% endif %}
 
     <div class="table-responsive">
-        <table class="data-table">
+        <table class="data-table mobile-card-table">
             <thead>
                 <tr>
                     <th>#</th>
@@ -97,15 +99,15 @@
             <tbody>
                 {% for alert in alert_history["items"] %}
                 <tr class="{% if alert.is_face_mismatch %}alert-mismatch{% endif %}">
-                    <td>{{ alert.id }}</td>
-                    <td>{{ alert.display_time }}</td>
-                    <td>{{ alert.vehicle_label }}</td>
-                    <td>{{ alert.driver_name }}</td>
-                    <td><span class="badge {% if alert.is_face_mismatch %}badge-danger{% else %}badge-type{% endif %}">{{ alert.alert_type }}</span></td>
-                    <td><span class="badge badge-level-{{ alert.alert_level }}">{{ alert.alert_level }}</span></td>
-                    <td>{{ alert.ear_text }}</td>
-                    <td>{{ alert.mar_text }}</td>
-                    <td>{{ alert.message }}</td>
+                    <td data-label="#">{{ ((alert_history.page - 1) * alert_history.per_page) + loop.index }}</td>
+                    <td data-label="Thời gian">{{ alert.display_time }}</td>
+                    <td data-label="Xe">{{ alert.vehicle_label }}</td>
+                    <td data-label="Tài xế">{{ alert.driver_name }}</td>
+                    <td data-label="Loại"><span class="badge {% if alert.is_face_mismatch %}badge-danger{% else %}badge-type{% endif %}">{{ alert.alert_type }}</span></td>
+                    <td data-label="Mức độ"><span class="badge badge-level-{{ alert.alert_level }}">{{ alert.alert_level }}</span></td>
+                    <td data-label="EAR">{{ alert.ear_text }}</td>
+                    <td data-label="MAR">{{ alert.mar_text }}</td>
+                    <td data-label="Chi tiết">{{ alert.message }}</td>
                 </tr>
                 {% endfor %}
                 {% if not alert_history["items"] %}
@@ -129,9 +131,52 @@
 </section>
 
 <section class="panel">
+    <h2 class="panel-title">Lịch sử sự cố thiết bị <span class="badge badge-count">{{ hardware_incident_history|length }}</span></h2>
+    <div class="table-responsive">
+        <table class="data-table mobile-card-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Thời gian</th>
+                    <th>Xe</th>
+                    <th>Tài xế</th>
+                    <th>Thiết bị</th>
+                    <th>Lý do</th>
+                    <th>Trạng thái</th>
+                    <th>Telegram admin</th>
+                    <th>Telegram tài xế</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for incident in hardware_incident_history %}
+                <tr class="{% if incident.is_open %}alert-mismatch{% endif %}">
+                    <td data-label="#">{{ loop.index }}</td>
+                    <td data-label="Thời gian">{{ incident.first_seen_display }}</td>
+                    <td data-label="Xe">{{ incident.vehicle_label }}</td>
+                    <td data-label="Tài xế">{{ incident.driver_name }}</td>
+                    <td data-label="Thiết bị">{{ incident.device_label }}</td>
+                    <td data-label="Lý do">{{ incident.reason }}</td>
+                    <td data-label="Trạng thái">
+                        <span class="badge {% if incident.is_open %}badge-danger{% else %}badge-type{% endif %}">
+                            {{ incident.status_text }}
+                        </span>
+                    </td>
+                    <td data-label="Telegram admin">{{ incident.admin_telegram_status }}</td>
+                    <td data-label="Telegram tài xế">{{ incident.driver_telegram_status }}</td>
+                </tr>
+                {% endfor %}
+                {% if not hardware_incident_history %}
+                <tr><td colspan="9" class="text-center text-muted">Không có sự cố thiết bị</td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<section class="panel">
     <h2 class="panel-title">Ca làm việc <span class="badge badge-count">{{ session_history.total }}</span></h2>
     <div class="table-responsive">
-        <table class="data-table">
+        <table class="data-table mobile-card-table">
             <thead>
                 <tr>
                     <th>#</th>
@@ -146,13 +191,13 @@
             <tbody>
                 {% for session in session_history["items"] %}
                 <tr>
-                    <td>{{ session.id }}</td>
-                    <td>{{ session.driver_name }}</td>
-                    <td>{{ session.vehicle_label }}</td>
-                    <td>{{ session.checkin_display }}</td>
-                    <td>{{ session.checkout_display }}</td>
-                    <td>{{ session.duration_text }}</td>
-                    <td>
+                    <td data-label="#">{{ ((session_history.page - 1) * session_history.per_page) + loop.index }}</td>
+                    <td data-label="Tài xế">{{ session.driver_name }}</td>
+                    <td data-label="Xe">{{ session.vehicle_label }}</td>
+                    <td data-label="Check-in">{{ session.checkin_display }}</td>
+                    <td data-label="Check-out">{{ session.checkout_display }}</td>
+                    <td data-label="Thời lượng">{{ session.duration_text }}</td>
+                    <td data-label="Trạng thái">
                         <span class="badge {% if session.is_active %}badge-info{% else %}badge-type{% endif %}">
                             {{ session.status_text }}
                         </span>
@@ -178,4 +223,5 @@
     </div>
     {% endif %}
 </section>
+</div>
 {% endblock %}

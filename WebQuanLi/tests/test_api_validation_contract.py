@@ -79,6 +79,111 @@ class ApiValidationContractTest(unittest.TestCase):
         self.assertEqual(second.status_code, 409)
         self.assertIn("RFID", second.json()["detail"])
 
+    def test_driver_payload_accepts_telegram_chat_id(self):
+        async def run():
+            created = await self._request(
+                "POST",
+                "/api/drivers",
+                json={
+                    "name": "Telegram Driver",
+                    "rfid_tag": "RFID-TG",
+                    "telegram_chat_id": "186667059",
+                },
+            )
+            drivers = await self._request("GET", "/api/drivers")
+            return created, drivers
+
+        created, drivers_response = asyncio.run(run())
+
+        self.assertEqual(created.status_code, 200)
+        self.assertEqual(drivers_response.status_code, 200)
+        created_id = created.json()["id"]
+        drivers = drivers_response.json()
+        created_driver = next(d for d in drivers if d["id"] == created_id)
+        self.assertEqual(created_driver["telegram_chat_id"], "186667059")
+
+    def test_vehicle_payload_accepts_assistant_driver_id(self):
+        async def run():
+            assistant = await self._request(
+                "POST",
+                "/api/drivers",
+                json={
+                    "name": "Assistant Driver",
+                    "rfid_tag": "RFID-AST",
+                    "telegram_chat_id": "186667060",
+                },
+            )
+            if assistant.status_code != 200:
+                return assistant, None, None
+            assistant_id = assistant.json()["id"]
+            created = await self._request(
+                "POST",
+                "/api/vehicles",
+                json={
+                    "plate_number": "59A-54321",
+                    "name": "Xe Co Tai Xe Phu",
+                    "device_id": "jetson-nano-002",
+                    "manager_phone": "0900000003",
+                    "assistant_driver_id": assistant_id,
+                },
+            )
+            vehicles = await self._request("GET", "/api/vehicles")
+            return assistant, created, vehicles
+
+        assistant, created, vehicles_response = asyncio.run(run())
+
+        self.assertEqual(assistant.status_code, 200)
+        assistant_id = assistant.json()["id"]
+        self.assertIsNotNone(created)
+        self.assertEqual(created.status_code, 200)
+        self.assertEqual(vehicles_response.status_code, 200)
+        vehicles = vehicles_response.json()
+        created_vehicle = next(v for v in vehicles if v["plate_number"] == "59A-54321")
+        self.assertEqual(created_vehicle["assistant_driver_id"], assistant_id)
+        self.assertEqual(created_vehicle["assistant_driver_name"], "Assistant Driver")
+
+    def test_deleting_assistant_driver_clears_vehicle_assignment(self):
+        async def run():
+            assistant = await self._request(
+                "POST",
+                "/api/drivers",
+                json={
+                    "name": "Deleted Assistant Driver",
+                    "rfid_tag": "RFID-AST-DEL",
+                    "telegram_chat_id": "186667061",
+                },
+            )
+            if assistant.status_code != 200:
+                return assistant, None, None, None
+
+            assistant_id = assistant.json()["id"]
+            created = await self._request(
+                "POST",
+                "/api/vehicles",
+                json={
+                    "plate_number": "59A-67890",
+                    "name": "Xe Xoa Tai Xe Phu",
+                    "device_id": "jetson-nano-003",
+                    "manager_phone": "0900000004",
+                    "assistant_driver_id": assistant_id,
+                },
+            )
+            deleted = await self._request("DELETE", f"/api/drivers/{assistant_id}")
+            vehicles = await self._request("GET", "/api/vehicles")
+            return assistant, created, deleted, vehicles
+
+        assistant, created, deleted, vehicles_response = asyncio.run(run())
+
+        self.assertEqual(assistant.status_code, 200)
+        self.assertIsNotNone(created)
+        self.assertEqual(created.status_code, 200)
+        self.assertEqual(deleted.status_code, 200)
+        self.assertEqual(vehicles_response.status_code, 200)
+        vehicles = vehicles_response.json()
+        created_vehicle = next(v for v in vehicles if v["plate_number"] == "59A-67890")
+        self.assertIsNone(created_vehicle["assistant_driver_id"])
+        self.assertIsNone(created_vehicle["assistant_driver_name"])
+
     def test_create_vehicle_rejects_duplicate_plate_and_device_id_with_409(self):
         async def run():
             duplicate_plate = await self._request(

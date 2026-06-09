@@ -1,26 +1,36 @@
 <!DOCTYPE html>
 <html lang="vi">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="Hệ thống cảnh báo buồn ngủ trên xe ô tô - WebQuanLi Dashboard">
-    <title>{% block title %}WebQuanLi{% endblock %} — Hệ Thống Cảnh Báo Buồn Ngủ</title>
+    <title>{% block title %}WebQuanLi{% endblock %} - Hệ Thống Cảnh Báo Buồn Ngủ</title>
 
-    <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Manrope:wght@500;600;700;800&display=swap"
+        rel="stylesheet">
 
-    <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-
-    <!-- App CSS -->
-    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/style.css?v=mobile-webview-20260607">
 
     {% block head_extra %}{% endblock %}
 </head>
-<body>
-    <!-- Sidebar Navigation -->
+
+<body class="webquanli-shell" data-mobile-title="{% block mobile_title %}WebQuanLi{% endblock %}">
+    <header class="mobile-app-bar" id="mobile-app-bar" aria-label="Thanh điều hướng mobile">
+        <div class="mobile-app-title-group">
+            <span class="mobile-app-brand">DrowsiGuard</span>
+            <strong id="mobile-page-title">WebQuanLi</strong>
+        </div>
+        <span class="mobile-connection-pill" id="mobile-connection-pill">
+            <span class="status-dot online"></span>
+            <span>WebView</span>
+        </span>
+    </header>
+
     <nav class="sidebar" id="sidebar">
         <div class="sidebar-header">
             <div class="logo">
@@ -32,20 +42,23 @@
 
         <ul class="nav-menu">
             <li><a href="/" class="nav-link {% if request.url.path == '/' %}active{% endif %}" id="nav-dashboard">
-                <span class="nav-icon">📊</span><span class="nav-label">Trung tâm giám sát</span>
-            </a></li>
-            <li><a href="/history" class="nav-link {% if request.url.path == '/history' %}active{% endif %}" id="nav-history">
-                <span class="nav-icon">📋</span><span class="nav-label">Lịch Sử</span>
-            </a></li>
+                    <span class="nav-icon">📊</span><span class="nav-label">Trung tâm giám sát</span>
+                </a></li>
+            <li><a href="/history" class="nav-link {% if request.url.path == '/history' %}active{% endif %}"
+                    id="nav-history">
+                    <span class="nav-icon">📋</span><span class="nav-label">Lịch Sử</span>
+                </a></li>
             <li><a href="/fleet" class="nav-link {% if request.url.path == '/fleet' %}active{% endif %}" id="nav-fleet">
-                <span class="nav-icon">🚛</span><span class="nav-label">Đội Xe</span>
-            </a></li>
-            <li><a href="/statistics" class="nav-link {% if request.url.path == '/statistics' %}active{% endif %}" id="nav-statistics">
-                <span class="nav-icon">📈</span><span class="nav-label">Thống Kê</span>
-            </a></li>
-            <li><a href="/docs" class="nav-link {% if request.url.path == '/docs' %}active{% endif %}" id="nav-docs" target="_blank" rel="noopener noreferrer">
-                <span class="nav-icon">📘</span><span class="nav-label">API Docs</span>
-            </a></li>
+                    <span class="nav-icon">🚛</span><span class="nav-label">Đội Xe</span>
+                </a></li>
+            <li><a href="/penalties" class="nav-link {% if request.url.path == '/penalties' %}active{% endif %}"
+                    id="nav-penalties">
+                    <span class="nav-icon">⚠️</span><span class="nav-label">Xử phạt</span>
+                </a></li>
+            <li><a href="/statistics" class="nav-link {% if request.url.path == '/statistics' %}active{% endif %}"
+                    id="nav-statistics">
+                    <span class="nav-icon">📈</span><span class="nav-label">Thống Kê</span>
+                </a></li>
         </ul>
 
         <div class="sidebar-footer">
@@ -62,32 +75,24 @@
         </div>
     </nav>
 
-    <!-- Main Content -->
     <main class="main-content" id="main-content">
-        <!-- Offline Banner -->
         <div class="offline-banner" id="offline-banner" style="display: none;">
             <span class="offline-icon">⚠️</span>
-            <span>MẤT KẾT NỐI VỚI XE — ĐANG Ở TRẠNG THÁI OFFLINE</span>
+            <span>MẤT KẾT NỐI VỚI XE - ĐANG Ở TRẠNG THÁI OFFLINE</span>
             <span class="offline-timer" id="offline-timer"></span>
         </div>
 
         {% block content %}{% endblock %}
     </main>
 
-    <!-- HTMX -->
     <script src="https://unpkg.com/htmx.org@1.9.12"></script>
     <script src="https://unpkg.com/htmx.org@1.9.12/dist/ext/sse.js"></script>
-
-    <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
-    <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0"></script>
-
-    <!-- App Scripts -->
     <script src="/static/js/session_timer.js"></script>
+    <div id="toast-container" class="toast-container" aria-live="polite" aria-atomic="true"></div>
+    <script src="/static/js/toast.js?v=mobile-webview-20260607"></script>
 
-    <!-- Sidebar toggle -->
     <script>
         const sidebar = document.getElementById('sidebar');
         const toggle = document.getElementById('sidebar-toggle');
@@ -98,7 +103,6 @@
             toggle.setAttribute('aria-expanded', String(!collapsed));
         });
 
-        // Mobile: close sidebar on link click
         document.querySelectorAll('.nav-link').forEach(link => {
             link.addEventListener('click', () => {
                 if (window.innerWidth <= 768) {
@@ -109,7 +113,9 @@
             });
         });
     </script>
+    <script src="/static/js/mobile_webview.js?v=mobile-webview-20260607"></script>
 
     {% block scripts %}{% endblock %}
 </body>
+
 </html>

@@ -37,12 +37,15 @@ class HistoryServiceTest(unittest.TestCase):
             await db.flush()
 
             for idx in range(130):
+                message = f"alert searchable-{idx}"
+                if idx == 0:
+                    message = "AI=DROWSY confidence=0.98 reason=Eyes closed for 3.0s; PERCLOS 0.55 perclos=0.781"
                 db.add(SystemAlert(
                     vehicle_id=vehicle.id,
                     driver_id=driver.id,
                     alert_type=AlertType.DROWSINESS,
                     alert_level=AlertLevel.LEVEL_1,
-                    message=f"alert searchable-{idx}",
+                    message=message,
                     timestamp=datetime(2026, 4, 27, 17, 0, 0) - timedelta(minutes=idx),
                 ))
 
@@ -73,8 +76,10 @@ class HistoryServiceTest(unittest.TestCase):
 
         self.assertEqual(history["total"], 100)
         self.assertEqual(history["retained_total"], 130)
-        self.assertEqual(len(history["items"]), 25)
+        self.assertEqual(len(history["items"]), 10)
         self.assertEqual(history["items"][0]["display_time"], "00:00:00 - 28/04/2026")
+        self.assertEqual(history["items"][0]["message"], "AI=DROWSY | conf=0.98 | PERCLOS=0.781")
+        self.assertNotIn("reason=Eyes closed", history["items"][0]["message"])
 
     def test_search_finds_retained_alert_beyond_default_100_cap(self):
         async def run():

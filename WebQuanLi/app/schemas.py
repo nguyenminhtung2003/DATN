@@ -37,6 +37,7 @@ PLATE_RE = re.compile(r"^[A-Z0-9][A-Z0-9 .-]{3,19}$", re.IGNORECASE)
 DEVICE_RE = re.compile(r"^[A-Z0-9_.:-]{3,50}$", re.IGNORECASE)
 RFID_RE = re.compile(r"^[A-Z0-9_.:-]{1,50}$", re.IGNORECASE)
 PHONE_RE = re.compile(r"^\+?\d{8,15}$")
+TELEGRAM_CHAT_RE = re.compile(r"^-?\d{5,20}$")
 GENDER_VALUES = {"nam", "nu", "nữ", "khac", "khác", "male", "female", "other"}
 HARDWARE_STATUS_KEYS = {
     "power",
@@ -101,6 +102,7 @@ class DriverCreate(BaseModel):
     age: Optional[int] = None
     gender: Optional[str] = None
     phone: Optional[str] = None
+    telegram_chat_id: Optional[str] = None
     rfid_tag: str
     vehicle_id: Optional[int] = None
 
@@ -122,6 +124,11 @@ class DriverCreate(BaseModel):
     def validate_phone(cls, value: Optional[str]) -> Optional[str]:
         return _validate_pattern(value, PHONE_RE, "So dien thoai")
 
+    @field_validator("telegram_chat_id")
+    @classmethod
+    def validate_telegram_chat_id(cls, value: Optional[str]) -> Optional[str]:
+        return _validate_pattern(value, TELEGRAM_CHAT_RE, "Telegram chat ID")
+
     @field_validator("gender")
     @classmethod
     def validate_gender(cls, value: Optional[str]) -> Optional[str]:
@@ -136,6 +143,7 @@ class DriverUpdate(BaseModel):
     age: Optional[int] = None
     gender: Optional[str] = None
     phone: Optional[str] = None
+    telegram_chat_id: Optional[str] = None
     vehicle_id: Optional[int] = None
 
     @field_validator("name")
@@ -151,6 +159,11 @@ class DriverUpdate(BaseModel):
     def validate_optional_phone(cls, value: Optional[str]) -> Optional[str]:
         return _validate_pattern(value, PHONE_RE, "So dien thoai")
 
+    @field_validator("telegram_chat_id")
+    @classmethod
+    def validate_optional_telegram_chat_id(cls, value: Optional[str]) -> Optional[str]:
+        return _validate_pattern(value, TELEGRAM_CHAT_RE, "Telegram chat ID")
+
     @field_validator("gender")
     @classmethod
     def validate_optional_gender(cls, value: Optional[str]) -> Optional[str]:
@@ -160,11 +173,31 @@ class DriverUpdate(BaseModel):
         return value
 
 
+class DriverSafetyScoreUpdate(BaseModel):
+    score: int = Field(ge=0, le=100)
+    note: Optional[str] = None
+
+    @field_validator("note")
+    @classmethod
+    def validate_note(cls, value: Optional[str]) -> Optional[str]:
+        return _strip_optional(value)
+
+
+class DriverSafetyScoreReset(BaseModel):
+    note: Optional[str] = None
+
+    @field_validator("note")
+    @classmethod
+    def validate_reset_note(cls, value: Optional[str]) -> Optional[str]:
+        return _strip_optional(value)
+
+
 class VehicleCreate(BaseModel):
     plate_number: str
     name: str
     device_id: Optional[str] = None
     manager_phone: Optional[str] = None
+    assistant_driver_id: Optional[int] = None
 
     @field_validator("plate_number")
     @classmethod
@@ -193,6 +226,7 @@ class VehicleCreate(BaseModel):
 class VehicleUpdate(BaseModel):
     name: Optional[str] = None
     manager_phone: Optional[str] = None
+    assistant_driver_id: Optional[int] = None
     is_active: Optional[bool] = None
 
     @field_validator("name")

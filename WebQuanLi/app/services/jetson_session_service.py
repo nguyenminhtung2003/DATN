@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import AlertLevel, AlertType, Driver, DriverSession, SystemAlert
+from app.services.penalty_service import process_level3_penalty_for_alert
 
 
 async def resolve_driver_by_rfid(db: AsyncSession, rfid_tag: str) -> Driver | None:
@@ -78,6 +79,8 @@ async def create_drowsiness_alert(
         )
         duplicate = (await db.execute(duplicate_query)).scalar_one_or_none()
         if duplicate:
+            if duplicate.alert_level == AlertLevel.LEVEL_3:
+                await process_level3_penalty_for_alert(db, duplicate.id)
             return duplicate
     
     msg_parts = []
@@ -109,4 +112,6 @@ async def create_drowsiness_alert(
     db.add(alert)
     await db.commit()
     await db.refresh(alert)
+    if alert.alert_level == AlertLevel.LEVEL_3:
+        await process_level3_penalty_for_alert(db, alert.id)
     return alert

@@ -28,6 +28,8 @@ class Settings:
     ESMS_SECRET_KEY: str = os.getenv("ESMS_SECRET_KEY", "")
     ESMS_BRANDNAME: str = os.getenv("ESMS_BRANDNAME", "Baotintuc")
     ESMS_SMS_TYPE: int = int(os.getenv("ESMS_SMS_TYPE", "2"))
+    TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    ADMIN_TELEGRAM_CHAT_ID: str = os.getenv("ADMIN_TELEGRAM_CHAT_ID", "")
 
     ADMIN_USERNAME: str = os.getenv("ADMIN_USERNAME")
     if not ADMIN_USERNAME:
@@ -46,6 +48,7 @@ class Settings:
     DATA_DIR: Path = BASE_DIR / "data"
 
     OFFLINE_THRESHOLD_SECONDS: int = 60
+    HARDWARE_HEARTBEAT_TIMEOUT_SECONDS: int = int(os.getenv("HARDWARE_HEARTBEAT_TIMEOUT_SECONDS", "15"))
     SESSION_CLOSE_TIMEOUT_SECONDS: int = 300  # 5 minutes
 
 

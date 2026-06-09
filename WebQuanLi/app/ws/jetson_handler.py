@@ -26,6 +26,7 @@ from app.services.jetson_session_service import (
     resolve_driver_by_rfid,
     start_or_reuse_session,
 )
+from app.services.hardware_incident_service import process_hardware_payload
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -187,6 +188,7 @@ async def jetson_websocket(ws: WebSocket, device_id: str):
                         "speaker_output_ok": hw_data.speaker_effective,
                         "websocket_ok": hw_data.websocket_effective,
                     })
+                    await process_hardware_payload(db, vid, publish_payload)
                     await event_bus.publish(channel, "hardware", publish_payload)
 
                 elif msg_type == "session_start":

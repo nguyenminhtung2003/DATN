@@ -1,19 +1,19 @@
 {% for alert in recent_alerts %}
 <tr class="alert-row {% if alert.alert_type and alert.alert_type.value == 'FACE_MISMATCH' %}alert-mismatch{% endif %}">
-    <td>{{ format_vn_datetime(alert.timestamp) if alert.timestamp else 'N/A' }}</td>
-    <td>
+    <td data-label="Thời gian">{{ format_vn_datetime(alert.timestamp) if alert.timestamp else 'N/A' }}</td>
+    <td data-label="Loại">
         <span class="badge {% if alert.alert_type and alert.alert_type.value == 'FACE_MISMATCH' %}badge-danger{% elif alert.alert_type and alert.alert_type.value == 'TEST' %}badge-info{% else %}badge-type{% endif %}">
             {{ alert.alert_type.value if alert.alert_type else 'N/A' }}
         </span>
     </td>
-    <td>
+    <td data-label="Mức độ">
         <span class="badge badge-level-{{ alert.alert_level.value if alert.alert_level else 'LEVEL_1' }}">
             {{ alert.alert_level.value if alert.alert_level else 'N/A' }}
         </span>
     </td>
-    <td>{{ '%.2f'|format(alert.ear_value) if alert.ear_value else '—' }}</td>
-    <td>{{ '%.2f'|format(alert.mar_value) if alert.mar_value else '—' }}</td>
-    <td>{{ alert.message or 'Cảnh báo buồn ngủ' }}</td>
+    <td data-label="EAR">{{ '%.2f'|format(alert.ear_value) if alert.ear_value else '—' }}</td>
+    <td data-label="MAR">{{ '%.2f'|format(alert.mar_value) if alert.mar_value else '—' }}</td>
+    <td data-label="Chi tiết">{{ alert.message or 'Cảnh báo buồn ngủ' }}</td>
 </tr>
 {% endfor %}
 {% if not recent_alerts %}

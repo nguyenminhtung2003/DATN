@@ -1,4 +1,5 @@
 {% if active_session %}
+{% set session_is_online = connection_status == 'online' %}
 <div class="driver-info-card">
     {% if active_session.driver and active_session.driver.face_image_path %}
     <img src="{{ active_session.driver.face_image_path }}" alt="face" class="driver-face-img">
@@ -19,13 +20,18 @@
             <span class="verify-badge verify-demo">Đang chờ trạng thái xác minh</span>
         </div>
         <div class="session-info">
+            {% if session_is_online %}
             <span class="session-active">🟢 Đang chạy</span>
+            {% else %}
+            <span class="session-offline">🔴 Tạm dừng do mất kết nối</span>
+            {% endif %}
             <p>⏱ Check-in: {{ active_session.checkin_at.strftime('%H:%M:%S — %d/%m/%Y') if active_session.checkin_at
                 else 'N/A' }}</p>
             <p>⏹ Check-out: --:--:-- (chưa kết thúc)</p>
             <p class="session-timer"
-                data-checkin="{{ active_session.checkin_at.isoformat() if active_session.checkin_at else '' }}">⏳ Thời
-                gian lái: 00:00:00</p>
+                data-checkin="{{ active_session.checkin_at.isoformat() if active_session.checkin_at else '' }}"
+                {% if not session_is_online %}data-stopped="true"{% endif %}>⏳ Thời gian lái:
+                {{ 'tạm dừng do mất kết nối' if not session_is_online else '00:00:00' }}</p>
         </div>
     </div>
 </div>

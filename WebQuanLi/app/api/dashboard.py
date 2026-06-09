@@ -12,6 +12,7 @@ from app.database import get_db
 from app.auth.dependencies import get_current_user
 from app.models import User, Vehicle, DriverSession, SystemAlert, HardwareStatus
 from app.core.event_bus import event_bus
+from app.services.hardware_incident_service import list_hardware_incidents
 from app.services.time_service import format_vn_datetime
 from app.ws.jetson_handler import manager
 
@@ -149,6 +150,7 @@ async def dashboard_page(
 
     # Get latest hardware status
     hw_status = None
+    open_hardware_incidents = []
     if vehicle:
         hw_result = await db.execute(
             select(HardwareStatus)
@@ -157,6 +159,12 @@ async def dashboard_page(
             .limit(1)
         )
         hw_status = hw_result.scalar_one_or_none()
+        open_hardware_incidents = await list_hardware_incidents(
+            db,
+            vehicle_id=vehicle.id,
+            open_only=True,
+            limit=5,
+        )
 
     # Get cached state from event bus. Hardware rows are also a reliable
     # heartbeat because Jetson publishes them every few seconds.
@@ -181,6 +189,7 @@ async def dashboard_page(
         "cached_state": state,
         "connection_status": "online" if is_connected else "offline",
         "hardware_badges": _build_hardware_badges(hw_status, cached_hardware),
+        "open_hardware_incidents": open_hardware_incidents,
         "last_seen_text": _format_last_seen(last_seen),
         "queue_pending_initial": cached_hardware.get("queue_pending", 0),
         "latest_gps": cached_gps,

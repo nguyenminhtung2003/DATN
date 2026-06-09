@@ -3,14 +3,17 @@ from urllib.parse import urlencode
 from fastapi import APIRouter, Depends, Request, Query
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import select, func, and_, desc
+from sqlalchemy import select, func, and_, desc, case
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from datetime import datetime, timedelta, timezone
 
 from app.config import settings
 from app.database import get_db
 from app.auth.dependencies import check_admin, get_current_user
-from app.models import User, Vehicle, Driver, DriverSession, SystemAlert
+from app.models import User, Vehicle, Driver, DriverSession, SystemAlert, DriverPenalty
+from app.services.driver_safety_service import calculate_driver_safety_map
+from app.services.hardware_incident_service import list_hardware_incidents
 from app.services.history_service import (
     delete_alert_history,
     list_alert_history,
@@ -26,6 +29,16 @@ def _clean_query_value(value):
         return None
     value = str(value).strip()
     return value or None
+
+
+def _clean_query_int(value):
+    value = _clean_query_value(value)
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        return None
 
 
 def _history_url(base_filters: dict, **updates) -> str:
@@ -45,6 +58,10 @@ def _total_pages(total: int, per_page: int) -> int:
     return ((total - 1) // per_page) + 1
 
 
+def _format_money_vnd(amount: int | None) -> str:
+    return f"{int(amount or 0):,}".replace(",", ".") + "đ"
+
+
 @router.get("/history", response_class=HTMLResponse)
 async def history_page(
     request: Request,
@@ -59,7 +76,8 @@ async def history_page(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    per_page = 25
+    alert_per_page = 10
+    session_per_page = 10
     filters = {
         "date_from": _clean_query_value(date_from),
         "date_to": _clean_query_value(date_to),
@@ -75,7 +93,7 @@ async def history_page(
         alert_type=filters["alert_type"],
         q=filters["q"],
         page=alert_page,
-        per_page=per_page,
+        per_page=alert_per_page,
     )
     session_history = await list_session_history(
         db,
@@ -84,7 +102,12 @@ async def history_page(
         vehicle_id=filters["vehicle_id"],
         q=filters["q"],
         page=session_page,
-        per_page=per_page,
+        per_page=session_per_page,
+    )
+    hardware_incident_history = await list_hardware_incidents(
+        db,
+        vehicle_id=_clean_query_int(filters["vehicle_id"]),
+        limit=10,
     )
 
     vehicles_result = await db.execute(select(Vehicle))
@@ -98,6 +121,7 @@ async def history_page(
         "vehicles": vehicles,
         "alert_history": alert_history,
         "session_history": session_history,
+        "hardware_incident_history": hardware_incident_history,
         "alert_total_pages": alert_total_pages,
         "session_total_pages": session_total_pages,
         "deleted": deleted,
@@ -139,19 +163,25 @@ async def fleet_page(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    vehicles_result = await db.execute(select(Vehicle).order_by(Vehicle.id))
+    vehicles_result = await db.execute(
+        select(Vehicle)
+        .options(selectinload(Vehicle.assistant_driver))
+        .order_by(Vehicle.id)
+    )
     vehicles = vehicles_result.scalars().all()
 
     drivers_result = await db.execute(
         select(Driver).where(Driver.is_active.is_(True)).order_by(Driver.id)
     )
     drivers = drivers_result.scalars().all()
+    safety_scores = await calculate_driver_safety_map(db, drivers)
 
     return templates.TemplateResponse(request=request, name="fleet.html", context={
         "request": request,
         "user": user,
         "vehicles": vehicles,
         "drivers": drivers,
+        "safety_scores": safety_scores,
     })
 
 
@@ -211,6 +241,43 @@ async def statistics_summary(
         for row in top_drivers_result.all()
     ]
 
+    review_status = func.coalesce(DriverPenalty.review_status, "pending")
+    driver_violation_stmt = (
+        select(
+            DriverPenalty.driver_id,
+            Driver.name.label("driver_name"),
+            func.count(DriverPenalty.id).label("level3_count"),
+            func.coalesce(func.sum(case((review_status == "pending", 1), else_=0)), 0).label("pending_count"),
+            func.coalesce(func.sum(case((review_status == "confirmed", 1), else_=0)), 0).label("confirmed_count"),
+            func.coalesce(func.sum(case((review_status == "cancelled", 1), else_=0)), 0).label("cancelled_count"),
+            func.coalesce(
+                func.sum(case((review_status != "cancelled", DriverPenalty.amount_vnd), else_=0)),
+                0,
+            ).label("active_amount_vnd"),
+            func.max(DriverPenalty.violation_time).label("last_violation_at"),
+        )
+        .join(Driver, Driver.id == DriverPenalty.driver_id)
+        .where(DriverPenalty.violation_time >= week_ago)
+        .group_by(DriverPenalty.driver_id, Driver.name)
+        .order_by(desc("level3_count"), desc("last_violation_at"))
+        .limit(10)
+    )
+    driver_violation_result = await db.execute(driver_violation_stmt)
+    driver_violation_stats = []
+    for row in driver_violation_result.all():
+        last_violation_at = row.last_violation_at
+        driver_violation_stats.append({
+            "driver_id": row.driver_id,
+            "driver_name": row.driver_name,
+            "level3_count": int(row.level3_count or 0),
+            "pending_count": int(row.pending_count or 0),
+            "confirmed_count": int(row.confirmed_count or 0),
+            "cancelled_count": int(row.cancelled_count or 0),
+            "active_amount_vnd": int(row.active_amount_vnd or 0),
+            "active_amount_display": _format_money_vnd(row.active_amount_vnd),
+            "last_violation_at": last_violation_at.isoformat() if last_violation_at else "",
+        })
+
     # Session stats (optimized via explicit tuple queries)
     stmt_sessions = select(func.count(DriverSession.id)).where(DriverSession.checkin_at >= week_ago)
     session_count_res = await db.execute(stmt_sessions)
@@ -228,6 +295,7 @@ async def statistics_summary(
     return {
         "daily_alerts": daily_counts,
         "top_drivers": top_driver_details,
+        "driver_violation_stats": driver_violation_stats,
         "hourly_heatmap": hourly_counts,
         "kpi": {
             "total_alerts_week": total_alerts_week,

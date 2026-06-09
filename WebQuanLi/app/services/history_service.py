@@ -1,3 +1,4 @@
+import re
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import and_, delete, func, or_, select
@@ -9,7 +10,11 @@ from app.services.time_service import format_vn_datetime, local_date_to_utc_boun
 
 ALERT_RETENTION_DAYS = 7
 DEFAULT_ALERT_DISPLAY_LIMIT = 100
-DEFAULT_PER_PAGE = 25
+DEFAULT_ALERT_PER_PAGE = 10
+DEFAULT_SESSION_PER_PAGE = 10
+AI_STATE_RE = re.compile(r"\bAI=([^\s]+)")
+AI_CONFIDENCE_RE = re.compile(r"\bconfidence=([0-9.]+)")
+AI_PERCLOS_RE = re.compile(r"\bperclos=([0-9.]+)", re.IGNORECASE)
 
 
 def _utc_naive(value: datetime | None = None) -> datetime:
@@ -49,6 +54,29 @@ def _metric_text(value):
     if value is None:
         return "-"
     return "%.2f" % value
+
+
+def _compact_alert_message(message):
+    message = _clean_text(message)
+    if not message:
+        return "-"
+
+    ai_state = AI_STATE_RE.search(message)
+    confidence = AI_CONFIDENCE_RE.search(message)
+    perclos_matches = AI_PERCLOS_RE.findall(message)
+    if ai_state or confidence or perclos_matches:
+        parts = []
+        if ai_state:
+            parts.append("AI=%s" % ai_state.group(1))
+        if confidence:
+            parts.append("conf=%s" % confidence.group(1))
+        if perclos_matches:
+            parts.append("PERCLOS=%s" % perclos_matches[-1])
+        return " | ".join(parts) if parts else message
+
+    if len(message) > 90:
+        return message[:87].rstrip() + "..."
+    return message
 
 
 def _vehicle_label(vehicle):
@@ -125,7 +153,7 @@ def _alert_item(alert, vehicle, driver):
         "ear_text": _metric_text(alert.ear_value),
         "mar_text": _metric_text(alert.mar_value),
         "pitch_text": _metric_text(alert.pitch_value),
-        "message": alert.message or "-",
+        "message": _compact_alert_message(alert.message),
         "vehicle_label": _vehicle_label(vehicle),
         "driver_name": driver.name if driver else "N/A",
         "is_face_mismatch": _enum_text(alert.alert_type) == "FACE_MISMATCH",
@@ -184,11 +212,11 @@ async def list_alert_history(
     alert_type=None,
     q=None,
     page=1,
-    per_page=DEFAULT_PER_PAGE,
+    per_page=DEFAULT_ALERT_PER_PAGE,
     now_utc=None,
 ) -> dict:
     page = max(1, int(page or 1))
-    per_page = max(1, min(100, int(per_page or DEFAULT_PER_PAGE)))
+    per_page = max(1, min(100, int(per_page or DEFAULT_ALERT_PER_PAGE)))
     clauses = _alert_filters(
         date_from=date_from,
         date_to=date_to,
@@ -284,11 +312,11 @@ async def list_session_history(
     vehicle_id=None,
     q=None,
     page=1,
-    per_page=DEFAULT_PER_PAGE,
+    per_page=DEFAULT_SESSION_PER_PAGE,
     now_utc=None,
 ) -> dict:
     page = max(1, int(page or 1))
-    per_page = max(1, min(100, int(per_page or DEFAULT_PER_PAGE)))
+    per_page = max(1, min(100, int(per_page or DEFAULT_SESSION_PER_PAGE)))
     clauses = _session_filters(date_from=date_from, date_to=date_to, vehicle_id=vehicle_id, q=q)
 
     count_query = (

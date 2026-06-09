@@ -30,9 +30,8 @@ class BankingUIContractTest(unittest.TestCase):
         self.assertIn("sidebar-is-collapsed", response.text)
         self.assertIn('id="nav-fleet"', response.text)
         self.assertIn('id="nav-statistics"', response.text)
-        self.assertIn('id="nav-docs"', response.text)
-        self.assertIn('target="_blank"', response.text)
-        self.assertIn('rel="noopener noreferrer"', response.text)
+        self.assertNotIn('id="nav-docs"', response.text)
+        self.assertNotIn("API Docs", response.text)
 
     def test_sidebar_css_keeps_fixed_navigation_foundation(self):
         css = Path(__file__).resolve().parents[1].joinpath("static", "css", "style.css").read_text(

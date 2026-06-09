@@ -3,6 +3,7 @@ import sys
 import uuid
 import unittest
 from pathlib import Path
+from unittest.mock import AsyncMock, patch
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
@@ -129,6 +130,51 @@ class JetsonSessionFlowTest(unittest.TestCase):
         self.assertEqual(alerts[0].id, alert_id)
         self.assertEqual(alerts[0].session_id, session_id)
         self.assertEqual(alerts[0].driver_id, driver_id)
+
+    def test_create_drowsiness_alert_processes_penalty_for_level3(self):
+        async def run():
+            from app.models import AlertLevel
+            from app.services.jetson_session_service import create_drowsiness_alert, start_or_reuse_session
+
+            with patch(
+                "app.services.jetson_session_service.process_level3_penalty_for_alert",
+                new=AsyncMock(),
+            ) as process_penalty:
+                async with self.session_factory() as db:
+                    await start_or_reuse_session(db, self.ids["vehicle_id"], self.ids["driver_a_id"])
+                    alert = await create_drowsiness_alert(
+                        db,
+                        vehicle_id=self.ids["vehicle_id"],
+                        level=AlertLevel.LEVEL_3,
+                        ear=0.1,
+                        mar=0.7,
+                        pitch=-8.0,
+                    )
+                return alert.id, process_penalty
+
+        alert_id, process_penalty = asyncio.run(run())
+
+        self.assertEqual(process_penalty.await_count, 1)
+        self.assertEqual(process_penalty.await_args.args[1], alert_id)
+
+    def test_create_drowsiness_alert_does_not_process_penalty_for_lower_levels(self):
+        async def run():
+            from app.models import AlertLevel
+            from app.services.jetson_session_service import create_drowsiness_alert, start_or_reuse_session
+
+            with patch(
+                "app.services.jetson_session_service.process_level3_penalty_for_alert",
+                new=AsyncMock(),
+            ) as process_penalty:
+                async with self.session_factory() as db:
+                    await start_or_reuse_session(db, self.ids["vehicle_id"], self.ids["driver_a_id"])
+                    await create_drowsiness_alert(db, vehicle_id=self.ids["vehicle_id"], level=AlertLevel.LEVEL_1)
+                    await create_drowsiness_alert(db, vehicle_id=self.ids["vehicle_id"], level=AlertLevel.LEVEL_2)
+                return process_penalty
+
+        process_penalty = asyncio.run(run())
+
+        process_penalty.assert_not_awaited()
 
     def test_close_active_session_marks_checkout(self):
         async def run():

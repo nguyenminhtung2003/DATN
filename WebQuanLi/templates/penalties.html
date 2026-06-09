@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+
+{% block title %}Quản lý xử phạt{% endblock %}
+{% block mobile_title %}Xử phạt{% endblock %}
+
+{% block content %}
+<div class="penalty-compact-dashboard mobile-page mobile-page-penalties">
+<div class="dashboard-header">
+    <div>
+        <h1>Quản lý xử phạt</h1>
+        <p class="dashboard-subtitle">Theo dõi và xử lý các vi phạm buồn ngủ mức 3</p>
+    </div>
+</div>
+
+<section class="penalty-summary-grid penalty-compact-summary" aria-label="Tổng quan xử phạt">
+    <article class="summary-card summary-card-primary">
+        <span class="summary-label">Tổng bản ghi</span>
+        <strong class="summary-value" id="summary-total-count">{{ summary.total_count }}</strong>
+        <small>Theo bộ lọc hiện tại</small>
+    </article>
+    <article class="summary-card">
+        <span class="summary-label">Chưa xử lý</span>
+        <strong class="summary-value" id="summary-pending-count">{{ summary.pending_count }}</strong>
+        <small>Cần admin kiểm tra</small>
+    </article>
+    <article class="summary-card">
+        <span class="summary-label">Đã xác nhận</span>
+        <strong class="summary-value" id="summary-confirmed-count">{{ summary.confirmed_count }}</strong>
+        <small>Đã đóng phạt</small>
+    </article>
+    <article class="summary-card">
+        <span class="summary-label">Đã hủy</span>
+        <strong class="summary-value" id="summary-cancelled-count">{{ summary.cancelled_count }}</strong>
+        <small>Cảnh báo sai hoặc miễn phạt</small>
+    </article>
+    <article class="summary-card summary-card-money">
+        <span class="summary-label">Tổng tiền phạt</span>
+        <strong class="summary-value" id="summary-total-amount">{{ summary.total_amount }}</strong>
+        <small>Chỉ tính bản ghi đang lọc</small>
+    </article>
+</section>
+
+<details class="panel penalty-compact-filter mobile-filter-drawer" open>
+    <summary class="panel-title mobile-filter-summary">Bộ lọc</summary>
+    <form method="GET" action="/penalties" class="filter-form" id="penalty-filter">
+        <div class="filter-grid">
+            <div class="form-group">
+                <label for="filter-driver">Tài xế</label>
+                <select id="filter-driver" name="driver_id">
+                    <option value="">Tất cả</option>
+                    {% for driver in drivers %}
+                    <option value="{{ driver.id }}" {% if filters.driver_id==driver.id %}selected{% endif %}>
+                        {{ driver.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="filter-vehicle">Xe</label>
+                <select id="filter-vehicle" name="vehicle_id">
+                    <option value="">Tất cả</option>
+                    {% for vehicle in vehicles %}
+                    <option value="{{ vehicle.id }}" {% if filters.vehicle_id==vehicle.id %}selected{% endif %}>
+                        {{ vehicle.plate_number }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="filter-status">Trạng thái</label>
+                <select id="filter-status" name="review_status">
+                    <option value="">Tất cả</option>
+                    {% for status, label in review_status_labels.items() %}
+                    <option value="{{ status }}" {% if filters.review_status==status %}selected{% endif %}>
+                        {{ label }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="filter-date-from">Từ ngày</label>
+                <input type="date" id="filter-date-from" name="date_from" value="{{ filters.date_from }}">
+            </div>
+            <div class="form-group">
+                <label for="filter-date-to">Đến ngày</label>
+                <input type="date" id="filter-date-to" name="date_to" value="{{ filters.date_to }}">
+            </div>
+            <div class="form-group form-group-btn">
+                <button type="submit" class="btn btn-primary">Lọc</button>
+                <a href="/penalties" class="btn btn-secondary">Đặt lại</a>
+            </div>
+        </div>
+    </form>
+</details>
+
+<section class="panel penalty-table-panel">
+    <h2 class="panel-title">Danh sách xử phạt <span class="badge badge-count">{{ penalties|length }}</span></h2>
+    <div class="table-responsive penalty-scroll-frame">
+        <table class="data-table mobile-card-table penalties-table">
+            <thead>
+                <tr>
+                    <th>Thời gian</th>
+                    <th>Tài xế</th>
+                    <th>Xe</th>
+                    <th>Lý do</th>
+                    <th>Số tiền</th>
+                    <th>Đề xuất xử lý</th>
+                    <th>Trạng thái</th>
+                    <th>Telegram</th>
+                    <th>Ghi chú</th>
+                    <th>Xử lý</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for penalty in penalties %}
+                <tr>
+                    <td data-label="Thời gian">{{ penalty.time }}</td>
+                    <td data-label="Tài xế">{{ penalty.driver_name }}</td>
+                    <td data-label="Xe">{{ penalty.plate_number }}</td>
+                    <td data-label="Lý do">{{ penalty.reason }}</td>
+                    <td data-label="Số tiền">{{ penalty.amount }}đ</td>
+                    <td data-label="Đề xuất xử lý">
+                        <span class="badge badge-recommendation badge-recommendation-{{ penalty.recommended_action }}">
+                            {{ penalty.recommended_action_label }}
+                        </span>
+                    </td>
+                    <td data-label="Trạng thái">
+                        <span class="badge badge-review-{{ penalty.review_status }}">
+                            {{ penalty.review_status_label }}
+                        </span>
+                        {% if penalty.resolved_by %}
+                        <div class="text-muted small-text">{{ penalty.resolved_by }}{% if penalty.resolved_at %} - {{
+                            penalty.resolved_at }}{% endif %}</div>
+                        {% endif %}
+                    </td>
+                    <td data-label="Telegram">
+                        <div>TX: {{ penalty.driver_telegram_status }}</div>
+                        <div>Phụ: {{ penalty.assistant_telegram_status }}</div>
+                        <div>Admin: {{ penalty.admin_telegram_status }}</div>
+                    </td>
+                    <td data-label="Ghi chú">
+                        {% if user.role == 'admin' %}
+                        <form method="POST" action="/api/penalties/{{ penalty.id }}/review" class="penalty-note-form">
+                            <input type="hidden" name="review_status" value="{{ penalty.review_status }}">
+                            <input type="hidden" name="next_url" value="{{ current_url }}">
+                            <textarea name="admin_note" rows="2"
+                                placeholder="Ghi chú admin">{{ penalty.admin_note }}</textarea>
+                            <button type="submit" class="btn-secondary btn-compact">Lưu</button>
+                        </form>
+                        {% else %}
+                        {{ penalty.admin_note or '-' }}
+                        {% endif %}
+                    </td>
+                    <td data-label="Xử lý" class="action-cell">
+                        {% if user.role == 'admin' %}
+                        <form method="POST" action="/api/penalties/{{ penalty.id }}/review" class="inline-action-form">
+                            <input type="hidden" name="review_status" value="confirmed">
+                            <input type="hidden" name="admin_note" value="{{ penalty.admin_note }}">
+                            <input type="hidden" name="next_url" value="{{ current_url }}">
+                            <button type="submit" class="btn-primary btn-compact">Xác nhận</button>
+                        </form>
+                        <form method="POST" action="/api/penalties/{{ penalty.id }}/review" class="inline-action-form">
+                            <input type="hidden" name="review_status" value="cancelled">
+                            <input type="hidden" name="admin_note" value="{{ penalty.admin_note }}">
+                            <input type="hidden" name="next_url" value="{{ current_url }}">
+                            <button type="submit" class="btn-warning btn-compact">Hủy</button>
+                        </form>
+                        {% else %}
+                        -
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+                {% if not penalties %}
+                <tr>
+                    <td colspan="10" class="text-center text-muted">Chưa có bản ghi xử phạt</td>
+                </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</section>
+</div>
+{% endblock %}

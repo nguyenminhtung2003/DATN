@@ -1,22 +1,18 @@
-// ══════════════════════════════════════════════
-// Chart.js — Statistics Dashboard
-// ══════════════════════════════════════════════
-
 const chartColors = {
-    primary: '#ff2800',  // Rosso Corsa
-    safe: '#00cc66',     // Bright Green
-    warning: '#ffcc00',  // Giallo Modena
-    danger: '#ff2800',   // Rosso Corsa
-    info: '#ffffff',     // Crisp White
-    gridColor: 'rgba(255, 255, 255, 0.1)',
-    textColor: '#a0a0a0',
+    primary: '#0f766e',
+    safe: '#16a34a',
+    warning: '#f59e0b',
+    danger: '#ef4444',
+    info: '#0284c7',
+    gridColor: 'rgba(15, 23, 42, 0.10)',
+    textColor: '#334155',
 };
 
 Chart.defaults.color = chartColors.textColor;
 Chart.defaults.borderColor = chartColors.gridColor;
 Chart.defaults.animation = {
-    duration: 500, // Thần tốc
-    easing: 'easeOutQuart'
+    duration: 500,
+    easing: 'easeOutQuart',
 };
 
 let dailyChart = null;
@@ -29,15 +25,15 @@ async function loadStatistics() {
         if (!resp.ok) return;
         const data = await resp.json();
 
-        // KPI Cards
         document.getElementById('kpi-alerts').textContent = data.kpi.total_alerts_week;
         document.getElementById('kpi-sessions').textContent = data.kpi.total_sessions_week;
         document.getElementById('kpi-hours').textContent = data.kpi.total_driving_hours + 'h';
         document.getElementById('kpi-avg').textContent = data.kpi.avg_session_hours + 'h';
 
-        renderDailyChart(data.daily_alerts);
-        renderTopDriversChart(data.top_drivers);
-        renderHeatmapChart(data.hourly_heatmap);
+        renderDailyChart(data.daily_alerts || {});
+        renderTopDriversChart(data.top_drivers || []);
+        renderHeatmapChart(data.hourly_heatmap || {});
+        renderDriverViolationTable(data.driver_violation_stats || []);
     } catch (err) {
         console.error('Failed to load statistics:', err);
     }
@@ -62,12 +58,20 @@ function renderDailyChart(dailyData) {
                 label: 'Số cảnh báo',
                 data: values,
                 backgroundColor: values.map(v =>
-                    v > 10 ? chartColors.danger :
-                        v > 5 ? chartColors.warning :
-                            chartColors.info
+                    v > 10 ? 'rgba(239, 68, 68, 0.78)' :
+                        v > 5 ? 'rgba(245, 158, 11, 0.78)' :
+                            'rgba(2, 132, 199, 0.74)'
                 ),
-                borderRadius: 4,
+                borderColor: values.map(v =>
+                    v > 10 ? 'rgba(185, 28, 28, 0.72)' :
+                        v > 5 ? 'rgba(180, 83, 9, 0.72)' :
+                            'rgba(14, 116, 144, 0.70)'
+                ),
+                borderWidth: 1,
+                borderRadius: 10,
                 borderSkipped: false,
+                barPercentage: 0.62,
+                categoryPercentage: 0.72,
             }],
         },
         options: {
@@ -90,12 +94,60 @@ function renderDailyChart(dailyData) {
     });
 }
 
+function moneyVnd(value) {
+    return `${Number(value || 0).toLocaleString('vi-VN')}đ`;
+}
+
+function shortDateTime(value) {
+    if (!value) return '-';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '-';
+    return date.toLocaleString('vi-VN', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+    });
+}
+
+function renderDriverViolationTable(driverViolationStats) {
+    const body = document.getElementById('driver-violation-body');
+    if (!body) return;
+
+    if (!driverViolationStats.length) {
+        body.innerHTML = `
+            <tr id="driver-violation-empty">
+                <td colspan="7" class="text-center text-muted">
+                    Chưa có vi phạm buồn ngủ mức 3 trong 7 ngày gần nhất
+                </td>
+            </tr>
+        `;
+        return;
+    }
+
+    body.innerHTML = driverViolationStats.map(item => {
+        const amount = item.active_amount_display || moneyVnd(item.active_amount_vnd);
+        return `
+            <tr>
+                <td data-label="Tài xế"><strong>${item.driver_name || 'N/A'}</strong></td>
+                <td data-label="Mức 3">${item.level3_count || 0}</td>
+                <td data-label="Chưa xử lý">${item.pending_count || 0}</td>
+                <td data-label="Đã xác nhận">${item.confirmed_count || 0}</td>
+                <td data-label="Đã hủy">${item.cancelled_count || 0}</td>
+                <td data-label="Tiền phạt còn hiệu lực">${amount}</td>
+                <td data-label="Lần gần nhất">${shortDateTime(item.last_violation_at)}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
 function renderTopDriversChart(topDrivers) {
     const ctx = document.getElementById('topDriversChart');
     if (!ctx) return;
 
     if (!topDrivers.length) {
-        ctx.parentElement.innerHTML = '<p style="text-align:center;color:#8b949e;padding:40px;">Chưa có dữ liệu tài xế</p>';
+        ctx.parentElement.innerHTML = '<p style="text-align:center;color:#64748b;padding:40px;">Chưa có dữ liệu tài xế</p>';
         return;
     }
 
@@ -111,14 +163,18 @@ function renderTopDriversChart(topDrivers) {
                 label: 'Số lần cảnh báo',
                 data: values,
                 backgroundColor: [
-                    chartColors.danger,
-                    chartColors.warning,
-                    chartColors.info,
-                    chartColors.safe,
-                    chartColors.primary,
+                    'rgba(15, 118, 110, 0.82)',
+                    'rgba(2, 132, 199, 0.78)',
+                    'rgba(245, 158, 11, 0.78)',
+                    'rgba(239, 68, 68, 0.74)',
+                    'rgba(22, 163, 74, 0.76)',
                 ],
-                borderRadius: 4,
+                borderColor: 'rgba(255, 255, 255, 0.86)',
+                borderWidth: 1,
+                borderRadius: 10,
                 borderSkipped: false,
+                barPercentage: 0.58,
+                categoryPercentage: 0.70,
             }],
         },
         options: {
@@ -146,7 +202,6 @@ function renderHeatmapChart(heatmapData) {
     const ctx = document.getElementById('heatmapChart');
     if (!ctx) return;
 
-    // Build matrix data
     const days = new Set();
     const hours = Array.from({ length: 24 }, (_, i) => i);
 
@@ -158,11 +213,10 @@ function renderHeatmapChart(heatmapData) {
     const sortedDays = Array.from(days).sort();
 
     if (!sortedDays.length) {
-        ctx.parentElement.innerHTML = '<p style="text-align:center;color:#8b949e;padding:40px;">Chưa có dữ liệu để tạo heatmap</p>';
+        ctx.parentElement.innerHTML = '<p style="text-align:center;color:#64748b;padding:40px;">Chưa có dữ liệu để tạo heatmap</p>';
         return;
     }
 
-    // Use bubble chart as heatmap proxy
     const datasets = [];
     sortedDays.forEach((day, dayIdx) => {
         hours.forEach(hour => {
@@ -182,9 +236,9 @@ function renderHeatmapChart(heatmapData) {
                 label: 'Mật độ cảnh báo',
                 data: datasets,
                 backgroundColor: datasets.map(d =>
-                    d.count > 5 ? 'rgba(248,81,73,0.6)' :
-                        d.count > 2 ? 'rgba(210,153,34,0.6)' :
-                            'rgba(56,139,253,0.4)'
+                    d.count > 5 ? 'rgba(220, 38, 38, 0.60)' :
+                        d.count > 2 ? 'rgba(217, 119, 6, 0.60)' :
+                            'rgba(37, 99, 235, 0.40)'
                 ),
             }],
         },

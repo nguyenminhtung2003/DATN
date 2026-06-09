@@ -9,7 +9,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.dependencies import check_admin, get_current_user
 from app.database import get_db
 from app.models import Driver, User, Vehicle
-from app.schemas import DriverCreate, DriverUpdate, VehicleCreate, VehicleUpdate
+from app.schemas import (
+    DriverCreate,
+    DriverSafetyScoreReset,
+    DriverSafetyScoreUpdate,
+    DriverUpdate,
+    VehicleCreate,
+    VehicleUpdate,
+)
+from app.services.driver_safety_service import reset_driver_safety_score, set_driver_safety_score
 from app.ws.jetson_handler import manager
 
 router = APIRouter(prefix="/api", tags=["vehicles"])
@@ -38,6 +46,19 @@ async def _ensure_unique_driver_rfid(db: AsyncSession, rfid_tag: str):
     result = await db.execute(select(Driver).where(Driver.rfid_tag == rfid_tag))
     if result.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="RFID đã tồn tại")
+
+
+async def _ensure_assistant_driver(db: AsyncSession, assistant_driver_id: int | None):
+    if assistant_driver_id is None:
+        return
+    result = await db.execute(
+        select(Driver).where(
+            Driver.id == assistant_driver_id,
+            Driver.is_active.is_(True),
+        )
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Tai xe phu khong tim thay")
 
 
 async def _get_vehicle_or_404(db: AsyncSession, vehicle_id: int) -> Vehicle:
@@ -165,6 +186,8 @@ async def list_vehicles(
             "name": v.name,
             "device_id": v.device_id,
             "manager_phone": v.manager_phone,
+            "assistant_driver_id": v.assistant_driver_id,
+            "assistant_driver_name": v.assistant_driver.name if v.assistant_driver else None,
             "is_active": v.is_active,
         }
         for v in vehicles
@@ -178,6 +201,7 @@ async def create_vehicle(
     user: User = Depends(check_admin),
 ):
     await _ensure_unique_vehicle(db, data)
+    await _ensure_assistant_driver(db, data.assistant_driver_id)
     vehicle = Vehicle(**data.model_dump())
     db.add(vehicle)
     await db.commit()
@@ -193,6 +217,7 @@ async def update_vehicle(
     user: User = Depends(check_admin),
 ):
     vehicle = await _get_vehicle_or_404(db, vehicle_id)
+    await _ensure_assistant_driver(db, data.assistant_driver_id)
     for key, val in data.model_dump(exclude_unset=True).items():
         setattr(vehicle, key, val)
     await db.commit()
@@ -228,6 +253,7 @@ async def list_drivers(
             "age": d.age,
             "gender": d.gender,
             "phone": d.phone,
+            "telegram_chat_id": d.telegram_chat_id,
             "rfid_tag": d.rfid_tag,
             "vehicle_id": d.vehicle_id,
             "face_image_path": d.face_image_path,
@@ -265,6 +291,56 @@ async def update_driver(
     return {"status": "updated"}
 
 
+@router.post("/drivers/{driver_id}/safety-score")
+async def update_driver_safety_score(
+    driver_id: int,
+    data: DriverSafetyScoreUpdate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(check_admin),
+):
+    await _get_driver_or_404(db, driver_id)
+    try:
+        score = await set_driver_safety_score(
+            db,
+            driver_id,
+            data.score,
+            created_by=user.username,
+            reason=data.note or "Admin chỉnh điểm an toàn",
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    await db.commit()
+    return {
+        "status": "updated",
+        "score": score.score,
+        "label": score.label,
+        "level": score.level,
+    }
+
+
+@router.post("/drivers/{driver_id}/safety-score/reset")
+async def reset_driver_safety_score_api(
+    driver_id: int,
+    data: DriverSafetyScoreReset | None = None,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(check_admin),
+):
+    await _get_driver_or_404(db, driver_id)
+    score = await reset_driver_safety_score(
+        db,
+        driver_id,
+        created_by=user.username,
+        reason=(data.note if data else None) or "Admin reset điểm an toàn",
+    )
+    await db.commit()
+    return {
+        "status": "updated",
+        "score": score.score,
+        "label": score.label,
+        "level": score.level,
+    }
+
+
 @router.delete("/drivers/{driver_id}")
 async def delete_driver(
     driver_id: int,
@@ -274,6 +350,9 @@ async def delete_driver(
 ):
     driver = await _get_driver_or_404(db, driver_id)
     driver.is_active = False
+    assigned_result = await db.execute(select(Vehicle).where(Vehicle.assistant_driver_id == driver_id))
+    for vehicle in assigned_result.scalars().all():
+        vehicle.assistant_driver_id = None
     await db.commit()
 
     sent_count = await _dispatch_driver_registry_sync_to_online_vehicles(request, db)

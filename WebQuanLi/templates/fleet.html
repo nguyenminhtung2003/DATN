@@ -1,18 +1,19 @@
 {% extends "base.html" %}
 {% block title %}Đội Xe{% endblock %}
+{% block mobile_title %}Đội xe{% endblock %}
 
 {% block content %}
+<div class="mobile-page mobile-page-fleet">
 <div class="dashboard-header">
-    <h1>🚛 Quản Lý Đội Xe & Tài Xế</h1>
+    <h1>Quản Lý Đội Xe & Tài Xế</h1>
 </div>
 
-<!-- Vehicles -->
 <section class="panel">
-    <h2 class="panel-title">🚗 Danh sách xe <span class="badge badge-count">{{ vehicles|length }}</span></h2>
+    <h2 class="panel-title">Danh sách xe <span class="badge badge-count">{{ vehicles|length }}</span></h2>
 
     {% if user.role == 'admin' %}
     <div class="add-driver-section" id="add-vehicle-section" style="display:none;">
-        <h4>➕ Thêm xe mới</h4>
+        <h4>Thêm xe mới</h4>
         <form id="add-vehicle-form" class="filter-form">
             <div class="filter-grid">
                 <div class="form-group">
@@ -31,8 +32,17 @@
                     <label>SĐT quản lý</label>
                     <input type="text" name="manager_phone" placeholder="0901234567">
                 </div>
+                <div class="form-group">
+                    <label>Tài xế phụ mặc định</label>
+                    <select name="assistant_driver_id">
+                        <option value="">Chưa chọn</option>
+                        {% for d in drivers %}
+                        <option value="{{ d.id }}">{{ d.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
                 <div class="form-group form-group-btn">
-                    <button type="submit" class="btn btn-primary">💾 Lưu</button>
+                    <button type="submit" class="btn btn-primary">Lưu</button>
                     <button type="button" class="btn btn-secondary"
                         onclick="document.getElementById('add-vehicle-section').style.display='none'">Hủy</button>
                 </div>
@@ -42,12 +52,12 @@
 
     <button class="btn btn-primary" onclick="document.getElementById('add-vehicle-section').style.display='block'"
         id="btn-add-vehicle" style="margin-bottom: 16px;">
-        ➕ Thêm xe
+        Thêm xe
     </button>
     {% endif %}
 
     <div class="table-responsive">
-        <table class="data-table">
+        <table class="data-table mobile-card-table">
             <thead>
                 <tr>
                     <th>#</th>
@@ -55,22 +65,37 @@
                     <th>Tên xe</th>
                     <th>Device ID</th>
                     <th>SĐT Quản lý</th>
+                    <th>Tài xế phụ</th>
                     <th>Trạng thái</th>
+                    {% if user.role == 'admin' %}<th>Hành động</th>{% endif %}
                 </tr>
             </thead>
             <tbody>
                 {% for v in vehicles %}
                 <tr>
-                    <td>{{ v.id }}</td>
-                    <td><strong>{{ v.plate_number }}</strong></td>
-                    <td>{{ v.name }}</td>
-                    <td><code>{{ v.device_id or 'N/A' }}</code></td>
-                    <td>{{ v.manager_phone or 'N/A' }}</td>
-                    <td>
+                    <td data-label="#">{{ v.id }}</td>
+                    <td data-label="Biển số"><strong>{{ v.plate_number }}</strong></td>
+                    <td data-label="Tên xe">{{ v.name }}</td>
+                    <td data-label="Device ID"><code>{{ v.device_id or 'N/A' }}</code></td>
+                    <td data-label="SĐT Quản lý">{{ v.manager_phone or 'N/A' }}</td>
+                    <td data-label="Tài xế phụ">{{ v.assistant_driver.name if v.assistant_driver else 'Chưa chọn' }}</td>
+                    <td data-label="Trạng thái">
                         <span class="badge {{ 'badge-success' if v.is_active else 'badge-secondary' }}">
-                            {{ 'Hoạt động' if v.is_active else 'Ngưng' }}
+                            {{ 'Hoạt động' if v.is_active else 'Ngừng' }}
                         </span>
                     </td>
+                    {% if user.role == 'admin' %}
+                    <td class="action-cell" data-label="Hành động">
+                        <button class="btn-icon btn-edit-vehicle"
+                            data-id="{{ v.id }}"
+                            data-plate-number="{{ v.plate_number|e }}"
+                            data-name="{{ v.name|e }}"
+                            data-device-id="{{ v.device_id or '' }}"
+                            data-manager-phone="{{ v.manager_phone or '' }}"
+                            data-assistant-driver-id="{{ v.assistant_driver_id or '' }}"
+                            title="Sửa xe">Sửa</button>
+                    </td>
+                    {% endif %}
                 </tr>
                 {% endfor %}
             </tbody>
@@ -78,13 +103,12 @@
     </div>
 </section>
 
-<!-- Drivers -->
 <section class="panel">
-    <h2 class="panel-title">👥 Danh sách tài xế <span class="badge badge-count">{{ drivers|length }}</span></h2>
+    <h2 class="panel-title">Danh sách tài xế <span class="badge badge-count">{{ drivers|length }}</span></h2>
 
     {% if user.role == 'admin' %}
     <div class="add-driver-section" id="add-driver-section" style="display:none;">
-        <h4>➕ Thêm tài xế mới</h4>
+        <h4>Thêm tài xế mới</h4>
         <form id="add-driver-form" class="filter-form">
             <div class="filter-grid">
                 <div class="form-group">
@@ -107,11 +131,15 @@
                     <input type="text" name="phone" placeholder="0901234567">
                 </div>
                 <div class="form-group">
+                    <label>Telegram ID</label>
+                    <input type="text" name="telegram_chat_id" placeholder="186667059">
+                </div>
+                <div class="form-group">
                     <label>RFID Tag</label>
                     <input type="text" name="rfid_tag" required placeholder="ABC123">
                 </div>
                 <div class="form-group form-group-btn">
-                    <button type="submit" class="btn btn-primary">💾 Lưu</button>
+                    <button type="submit" class="btn btn-primary">Lưu</button>
                     <button type="button" class="btn btn-secondary"
                         onclick="document.getElementById('add-driver-section').style.display='none'">Hủy</button>
                 </div>
@@ -121,12 +149,12 @@
 
     <button class="btn btn-primary" onclick="document.getElementById('add-driver-section').style.display='block'"
         id="btn-add-driver" style="margin-bottom: 16px;">
-        ➕ Thêm tài xế
+        Thêm tài xế
     </button>
     {% endif %}
 
     <div class="table-responsive">
-        <table class="data-table">
+        <table class="data-table mobile-card-table">
             <thead>
                 <tr>
                     <th>#</th>
@@ -135,7 +163,10 @@
                     <th>Tuổi</th>
                     <th>Giới tính</th>
                     <th>SĐT</th>
+                    <th>Telegram ID</th>
                     <th>RFID</th>
+                    <th>Điểm an toàn</th>
+                    <th>Mức đánh giá</th>
                     <th>Trạng thái</th>
                     {% if user.role == 'admin' %}<th>Hành động</th>{% endif %}
                 </tr>
@@ -143,44 +174,68 @@
             <tbody>
                 {% for d in drivers %}
                 <tr id="driver-row-{{ d.id }}">
-                    <td>{{ d.id }}</td>
-                    <td>
+                    <td data-label="#">{{ d.id }}</td>
+                    <td data-label="Ảnh mặt">
                         <span id="face-thumb-{{ d.id }}">
                             {% if d.face_image_path %}
                             <img src="{{ d.face_image_path }}" alt="face" class="driver-face-thumb">
                             {% else %}
-                            <span class="face-placeholder">👤</span>
+                            <span class="face-placeholder">User</span>
                             {% endif %}
                         </span>
                     </td>
-                    <td><strong>{{ d.name }}</strong></td>
-                    <td>{{ d.age or 'N/A' }}</td>
-                    <td>{{ d.gender or 'N/A' }}</td>
-                    <td>{{ d.phone or 'N/A' }}</td>
-                    <td><code>{{ d.rfid_tag }}</code></td>
-                    <td>
+                    <td data-label="Tên"><strong>{{ d.name }}</strong></td>
+                    <td data-label="Tuổi">{{ d.age or 'N/A' }}</td>
+                    <td data-label="Giới tính">{{ d.gender or 'N/A' }}</td>
+                    <td data-label="SĐT">{{ d.phone or 'N/A' }}</td>
+                    <td data-label="Telegram ID"><code>{{ d.telegram_chat_id or 'Chưa có' }}</code></td>
+                    <td data-label="RFID"><code>{{ d.rfid_tag }}</code></td>
+                    {% set safety = safety_scores.get(d.id) %}
+                    <td data-label="Điểm an toàn">
+                        {% if user.role == 'admin' %}
+                        <button type="button"
+                            class="safety-score-button btn-safety-score"
+                            data-driver-id="{{ d.id }}"
+                            data-driver-name="{{ d.name|e }}"
+                            data-current-score="{{ safety.score if safety else 100 }}"
+                            title="Chỉnh điểm an toàn">
+                            {{ safety.score if safety else 100 }}/100
+                        </button>
+                        {% else %}
+                        <strong>{{ safety.score if safety else 100 }}/100</strong>
+                        {% endif %}
+                    </td>
+                    <td data-label="Mức đánh giá">
+                        <span class="badge badge-safety-{{ safety.level if safety else 'safe' }}">
+                            {{ safety.label if safety else 'An toàn' }}
+                        </span>
+                    </td>
+                    <td data-label="Trạng thái">
                         <span class="badge {{ 'badge-success' if d.is_active else 'badge-secondary' }}">
-                            {{ 'Hoạt động' if d.is_active else 'Ngưng' }}
+                            {{ 'Hoạt động' if d.is_active else 'Ngừng' }}
                         </span>
                     </td>
                     {% if user.role == 'admin' %}
-                    <td class="action-cell">
-                        <button class="btn-icon btn-edit-driver" data-id="{{ d.id }}" data-name="{{ d.name }}"
-                            data-age="{{ d.age or '' }}" data-gender="{{ d.gender or '' }}"
-                            data-phone="{{ d.phone or '' }}" title="Sửa thông tin">✏️</button>
-                        <button class="btn-icon" onclick="document.getElementById('face-input-{{ d.id }}').click()"
-                            title="Upload ảnh mặt">📷</button>
-                        <input type="file" id="face-input-{{ d.id }}" accept="image/*" style="display:none"
-                            onchange="uploadFace({{ d.id }}, this)">
-                        <button class="btn-icon btn-delete-driver" data-id="{{ d.id }}" data-name="{{ d.name }}"
-                            title="Xóa tài xế">🗑️</button>
+                    <td class="action-cell" data-label="Hành động">
+                        <div class="action-buttons">
+                            <button class="btn-icon btn-edit-driver" data-id="{{ d.id }}" data-name="{{ d.name|e }}"
+                                data-age="{{ d.age or '' }}" data-gender="{{ d.gender or '' }}"
+                                data-phone="{{ d.phone or '' }}" data-telegram-chat-id="{{ d.telegram_chat_id or '' }}"
+                                title="Sửa thông tin">Sửa</button>
+                            <button class="btn-icon" onclick="document.getElementById('face-input-{{ d.id }}').click()"
+                                title="Upload ảnh mặt">Ảnh</button>
+                            <input type="file" id="face-input-{{ d.id }}" accept="image/*" style="display:none"
+                                onchange="uploadFace({{ d.id }}, this)">
+                            <button class="btn-icon btn-delete-driver" data-id="{{ d.id }}" data-name="{{ d.name|e }}"
+                                title="Xóa tài xế">Xóa</button>
+                        </div>
                     </td>
                     {% endif %}
                 </tr>
                 {% endfor %}
                 {% if not drivers %}
                 <tr>
-                    <td colspan="9" class="text-center text-muted">Chưa có tài xế nào</td>
+                    <td colspan="12" class="text-center text-muted">Chưa có tài xế nào</td>
                 </tr>
                 {% endif %}
             </tbody>
@@ -188,10 +243,49 @@
     </div>
 </section>
 
-<!-- Edit Driver Modal (simple inline) -->
+<div class="edit-driver-overlay" id="edit-vehicle-overlay" style="display:none;">
+    <div class="edit-driver-panel mobile-sheet-panel">
+        <h4>Sửa thông tin xe</h4>
+        <form id="edit-vehicle-form" class="filter-form">
+            <input type="hidden" id="edit-vehicle-id">
+            <div class="filter-grid">
+                <div class="form-group">
+                    <label>Biển số</label>
+                    <input type="text" id="edit-vehicle-plate" readonly>
+                </div>
+                <div class="form-group">
+                    <label>Tên xe</label>
+                    <input type="text" id="edit-vehicle-name" name="name" required>
+                </div>
+                <div class="form-group">
+                    <label>Device ID</label>
+                    <input type="text" id="edit-vehicle-device" readonly>
+                </div>
+                <div class="form-group">
+                    <label>SĐT quản lý</label>
+                    <input type="text" id="edit-vehicle-manager-phone" name="manager_phone">
+                </div>
+                <div class="form-group">
+                    <label>Tài xế phụ mặc định</label>
+                    <select id="edit-vehicle-assistant-driver" name="assistant_driver_id">
+                        <option value="">Chưa chọn</option>
+                        {% for d in drivers %}
+                        <option value="{{ d.id }}">{{ d.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group form-group-btn">
+                    <button type="submit" class="btn btn-primary">Lưu</button>
+                    <button type="button" class="btn btn-secondary" onclick="closeEditVehicle()">Hủy</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
 <div class="edit-driver-overlay" id="edit-driver-overlay" style="display:none;">
-    <div class="edit-driver-panel">
-        <h4>✏️ Sửa thông tin tài xế</h4>
+    <div class="edit-driver-panel mobile-sheet-panel">
+        <h4>Sửa thông tin tài xế</h4>
         <form id="edit-driver-form" class="filter-form">
             <input type="hidden" id="edit-driver-id">
             <div class="filter-grid">
@@ -214,25 +308,63 @@
                     <label>SĐT</label>
                     <input type="text" id="edit-phone" name="phone">
                 </div>
+                <div class="form-group">
+                    <label>Telegram ID</label>
+                    <input type="text" id="edit-telegram-chat-id" name="telegram_chat_id">
+                </div>
                 <div class="form-group form-group-btn">
-                    <button type="submit" class="btn btn-primary">💾 Lưu</button>
+                    <button type="submit" class="btn btn-primary">Lưu</button>
                     <button type="button" class="btn btn-secondary" onclick="closeEditDriver()">Hủy</button>
                 </div>
             </div>
         </form>
     </div>
 </div>
+
+<div class="edit-driver-overlay" id="safety-score-overlay" style="display:none;">
+    <div class="edit-driver-panel safety-score-panel mobile-sheet-panel">
+        <h4>Chỉnh điểm an toàn</h4>
+        <form id="safety-score-form" class="filter-form">
+            <input type="hidden" id="safety-driver-id">
+            <p class="text-muted" id="safety-driver-summary"></p>
+            <div class="filter-grid">
+                <div class="form-group">
+                    <label>Điểm mới</label>
+                    <input type="number" id="safety-score-input" min="0" max="100" required>
+                </div>
+                <div class="form-group">
+                    <label>Ghi chú</label>
+                    <input type="text" id="safety-note-input" placeholder="Lý do điều chỉnh">
+                </div>
+                <div class="form-group form-group-btn safety-score-actions">
+                    <button type="submit" class="btn btn-primary">Lưu điểm</button>
+                    <button type="button" class="btn btn-secondary" id="btn-reset-safety-score">Reset 100/100</button>
+                    <button type="button" class="btn btn-secondary" onclick="closeSafetyScoreModal()">Hủy</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-    // Add new vehicle
+    function nullableText(value) {
+        return value && value.trim() ? value.trim() : null;
+    }
+
+    function nullableInt(value) {
+        return value ? parseInt(value, 10) : null;
+    }
+
     document.getElementById('add-vehicle-form')?.addEventListener('submit', async function (e) {
         e.preventDefault();
         const formData = new FormData(this);
         const data = Object.fromEntries(formData.entries());
-        data.device_id = data.device_id || null;
-        data.manager_phone = data.manager_phone || null;
+        data.device_id = nullableText(data.device_id);
+        data.manager_phone = nullableText(data.manager_phone);
+        data.assistant_driver_id = nullableInt(data.assistant_driver_id);
 
         const resp = await fetch('/api/vehicles', {
             method: 'POST',
@@ -243,17 +375,57 @@
         if (resp.ok) {
             location.reload();
         } else {
-            const err = await resp.json();
-            alert('Lỗi: ' + (err.detail || 'Không thể thêm xe'));
+            const message = await apiErrorMessage(resp, 'Không thể thêm xe');
+            showToast(`Lỗi: ${message}`, 'error');
         }
     });
 
-    // Add new driver
+    document.querySelectorAll('.btn-edit-vehicle').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            document.getElementById('edit-vehicle-id').value = this.dataset.id;
+            document.getElementById('edit-vehicle-plate').value = this.dataset.plateNumber;
+            document.getElementById('edit-vehicle-name').value = this.dataset.name;
+            document.getElementById('edit-vehicle-device').value = this.dataset.deviceId || '';
+            document.getElementById('edit-vehicle-manager-phone').value = this.dataset.managerPhone || '';
+            document.getElementById('edit-vehicle-assistant-driver').value = this.dataset.assistantDriverId || '';
+            document.getElementById('edit-vehicle-overlay').style.display = 'flex';
+        });
+    });
+
+    function closeEditVehicle() {
+        document.getElementById('edit-vehicle-overlay').style.display = 'none';
+    }
+
+    document.getElementById('edit-vehicle-form')?.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        const id = document.getElementById('edit-vehicle-id').value;
+        const data = {
+            name: document.getElementById('edit-vehicle-name').value,
+            manager_phone: nullableText(document.getElementById('edit-vehicle-manager-phone').value),
+            assistant_driver_id: nullableInt(document.getElementById('edit-vehicle-assistant-driver').value),
+        };
+
+        const resp = await fetch(`/api/vehicles/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+        });
+
+        if (resp.ok) {
+            location.reload();
+        } else {
+            const message = await apiErrorMessage(resp, 'Không thể cập nhật xe');
+            showToast(`Lỗi: ${message}`, 'error');
+        }
+    });
+
     document.getElementById('add-driver-form')?.addEventListener('submit', async function (e) {
         e.preventDefault();
         const formData = new FormData(this);
         const data = Object.fromEntries(formData.entries());
-        data.age = data.age ? parseInt(data.age) : null;
+        data.age = nullableInt(data.age);
+        data.phone = nullableText(data.phone);
+        data.telegram_chat_id = nullableText(data.telegram_chat_id);
 
         const resp = await fetch('/api/drivers', {
             method: 'POST',
@@ -264,12 +436,11 @@
         if (resp.ok) {
             location.reload();
         } else {
-            const err = await resp.json();
-            alert('Lỗi: ' + (err.detail || 'Không thể thêm tài xế'));
+            const message = await apiErrorMessage(resp, 'Không thể thêm tài xế');
+            showToast(`Lỗi: ${message}`, 'error');
         }
     });
 
-    // Open edit form via data attributes
     document.querySelectorAll('.btn-edit-driver').forEach(function (btn) {
         btn.addEventListener('click', function () {
             document.getElementById('edit-driver-id').value = this.dataset.id;
@@ -277,6 +448,7 @@
             document.getElementById('edit-age').value = this.dataset.age || '';
             document.getElementById('edit-gender').value = this.dataset.gender || 'Nam';
             document.getElementById('edit-phone').value = this.dataset.phone || '';
+            document.getElementById('edit-telegram-chat-id').value = this.dataset.telegramChatId || '';
             document.getElementById('edit-driver-overlay').style.display = 'flex';
         });
     });
@@ -285,15 +457,15 @@
         document.getElementById('edit-driver-overlay').style.display = 'none';
     }
 
-    // Submit edit
     document.getElementById('edit-driver-form')?.addEventListener('submit', async function (e) {
         e.preventDefault();
         const id = document.getElementById('edit-driver-id').value;
         const data = {
             name: document.getElementById('edit-name').value,
-            age: document.getElementById('edit-age').value ? parseInt(document.getElementById('edit-age').value) : null,
+            age: nullableInt(document.getElementById('edit-age').value),
             gender: document.getElementById('edit-gender').value,
-            phone: document.getElementById('edit-phone').value || null,
+            phone: nullableText(document.getElementById('edit-phone').value),
+            telegram_chat_id: nullableText(document.getElementById('edit-telegram-chat-id').value),
         };
 
         const resp = await fetch(`/api/drivers/${id}`, {
@@ -305,12 +477,11 @@
         if (resp.ok) {
             location.reload();
         } else {
-            const err = await resp.json();
-            alert('Lỗi: ' + (err.detail || 'Không thể cập nhật'));
+            const message = await apiErrorMessage(resp, 'Không thể cập nhật');
+            showToast(`Lỗi: ${message}`, 'error');
         }
     });
 
-    // Soft delete driver
     document.querySelectorAll('.btn-delete-driver').forEach(function (btn) {
         btn.addEventListener('click', async function () {
             const driverId = this.dataset.id;
@@ -326,13 +497,73 @@
             if (resp.ok) {
                 location.reload();
             } else {
-                const err = await resp.json();
-                alert('Lỗi: ' + (err.detail || 'Không thể xóa tài xế'));
+                const message = await apiErrorMessage(resp, 'Không thể xóa tài xế');
+                showToast(`Lỗi: ${message}`, 'error');
             }
         });
     });
 
-    // Upload face image
+    document.querySelectorAll('.btn-safety-score').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            document.getElementById('safety-driver-id').value = this.dataset.driverId;
+            document.getElementById('safety-score-input').value = this.dataset.currentScore || '100';
+            document.getElementById('safety-note-input').value = '';
+            document.getElementById('safety-driver-summary').textContent =
+                `${this.dataset.driverName || 'Tài xế'} - hiện tại ${this.dataset.currentScore || 100}/100`;
+            document.getElementById('safety-score-overlay').style.display = 'flex';
+        });
+    });
+
+    function closeSafetyScoreModal() {
+        document.getElementById('safety-score-overlay').style.display = 'none';
+    }
+
+    document.getElementById('safety-score-form')?.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        const driverId = document.getElementById('safety-driver-id').value;
+        const score = parseInt(document.getElementById('safety-score-input').value, 10);
+        if (Number.isNaN(score) || score < 0 || score > 100) {
+            showToast('Điểm an toàn phải nằm trong khoảng 0-100', 'warning');
+            return;
+        }
+
+        const resp = await fetch(`/api/drivers/${driverId}/safety-score`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                score,
+                note: nullableText(document.getElementById('safety-note-input').value),
+            }),
+        });
+
+        if (resp.ok) {
+            showToast('Đã cập nhật điểm an toàn', 'success');
+            window.setTimeout(() => location.reload(), 450);
+        } else {
+            const message = await apiErrorMessage(resp, 'Không thể cập nhật điểm');
+            showToast(`Lỗi: ${message}`, 'error');
+        }
+    });
+
+    document.getElementById('btn-reset-safety-score')?.addEventListener('click', async function () {
+        const driverId = document.getElementById('safety-driver-id').value;
+        const resp = await fetch(`/api/drivers/${driverId}/safety-score/reset`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                note: nullableText(document.getElementById('safety-note-input').value),
+            }),
+        });
+
+        if (resp.ok) {
+            showToast('Đã reset điểm an toàn về 100/100', 'success');
+            window.setTimeout(() => location.reload(), 450);
+        } else {
+            const message = await apiErrorMessage(resp, 'Không thể reset điểm');
+            showToast(`Lỗi: ${message}`, 'error');
+        }
+    });
+
     async function uploadFace(driverId, input) {
         if (!input.files[0]) return;
 
@@ -346,13 +577,13 @@
 
         if (resp.ok) {
             const result = await resp.json();
-            // Update thumbnail in-place
             const thumb = document.getElementById('face-thumb-' + driverId);
             if (thumb) {
                 thumb.innerHTML = `<img src="${result.path}?t=${Date.now()}" alt="face" class="driver-face-thumb">`;
             }
+            showToast('Đã cập nhật ảnh mặt', 'success');
         } else {
-            alert('Lỗi upload ảnh mặt');
+            showToast('Lỗi upload ảnh mặt', 'error');
         }
         input.value = '';
     }

@@ -17,7 +17,7 @@ from app.api import dashboard as dashboard_module
 from app.core.event_bus import event_bus
 from app.database import Base, get_db
 from app.main import app
-from app.models import AlertLevel, AlertType, Driver, DriverSession, SystemAlert, User, Vehicle
+from app.models import AlertLevel, AlertType, Driver, DriverSession, HardwareIncident, SystemAlert, User, Vehicle
 from app.ws.jetson_handler import manager
 
 
@@ -91,6 +91,22 @@ class DashboardRealtimeContextTest(unittest.TestCase):
                 vehicle_id=vehicle.id,
                 driver_id=driver.id,
                 checkin_at=datetime(2026, 4, 28, 1, 2, 3, tzinfo=timezone.utc),
+            ))
+            await db.commit()
+
+    async def _seed_open_hardware_incident(self):
+        async with self.session_factory() as db:
+            vehicle_result = await db.execute(select(Vehicle).where(Vehicle.device_id == self.device_id))
+            vehicle = vehicle_result.scalar_one()
+            db.add(HardwareIncident(
+                vehicle_id=vehicle.id,
+                device_key="rfid",
+                severity="critical",
+                reason="RFID reader mất kết nối",
+                first_seen_at=datetime(2026, 6, 4, 8, 0, tzinfo=timezone.utc),
+                last_seen_at=datetime(2026, 6, 4, 8, 0, tzinfo=timezone.utc),
+                admin_telegram_status="sent",
+                driver_telegram_status="missing_chat_id",
             ))
             await db.commit()
 
@@ -178,6 +194,40 @@ class DashboardRealtimeContextTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn('data-connection-state="offline"', response.text)
         self.assertIn('data-next-monitoring-state="connect"', response.text)
+
+    def test_dashboard_displays_open_hardware_incidents(self):
+        asyncio.run(self._seed_open_hardware_incident())
+
+        response = asyncio.run(self._request("GET", "/"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Sự cố thiết bị gần đây", response.text)
+        self.assertIn("RFID", response.text)
+        self.assertIn("RFID reader mất kết nối", response.text)
+        self.assertIn("Đang lỗi", response.text)
+
+    def test_dashboard_marks_open_session_as_disconnected_when_jetson_is_offline(self):
+        asyncio.run(self._seed_active_session())
+
+        response = asyncio.run(self._request("GET", "/"))
+
+        self.assertEqual(response.status_code, 200)
+        overview_chip = response.text.split('<span class="chip-label">Phiên giám sát</span>', 1)[1].split("</div>", 1)[0]
+        driver_card = response.text.split('<div id="driver-card">', 1)[1].split("</section>", 1)[0]
+        self.assertIn("Mất kết nối", overview_chip)
+        self.assertIn('class="session-offline"', driver_card)
+        self.assertIn("Tạm dừng do mất kết nối", driver_card)
+        self.assertIn('data-stopped="true"', driver_card)
+        self.assertNotIn('class="session-active">🟢 Đang chạy', driver_card)
+
+    def test_dashboard_realtime_connection_event_updates_open_session_state(self):
+        response = asyncio.run(self._request("GET", "/"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("function setSessionConnectionState", response.text)
+        self.assertIn("setMonitoringSessionText", response.text)
+        self.assertIn("session-offline", response.text)
+        self.assertIn("Tạm dừng do mất kết nối", response.text)
 
     def test_dashboard_eager_loads_active_session_driver_for_template(self):
         asyncio.run(self._seed_active_session())
