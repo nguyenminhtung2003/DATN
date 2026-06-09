@@ -185,7 +185,7 @@ async def jetson_websocket(ws: WebSocket, device_id: str):
                         "camera_ok": hw_data.camera_effective,
                         "rfid_reader_ok": hw_data.rfid_effective,
                         "gps_uart_ok": hw_data.gps_effective,
-                        "speaker_output_ok": hw_data.speaker_effective,
+                        "speaker_output_ok": hw_data.speaker_output_effective,
                         "websocket_ok": hw_data.websocket_effective,
                     })
                     await process_hardware_payload(db, vid, publish_payload)

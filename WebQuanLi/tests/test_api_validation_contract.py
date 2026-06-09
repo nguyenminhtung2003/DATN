@@ -407,6 +407,18 @@ class ApiValidationContractTest(unittest.TestCase):
         self.assertTrue(payload.speaker_output_ok)
         self.assertEqual(payload.queue_pending, 3)
 
+    def test_hardware_ws_schema_requires_bluetooth_connection_for_speaker_effective_status(self):
+        from app.schemas import HardwareData
+
+        payload = HardwareData(
+            bluetooth_adapter_ok=True,
+            bluetooth_speaker_connected=False,
+            speaker_output_ok=True,
+        )
+
+        self.assertTrue(payload.speaker_output_effective)
+        self.assertFalse(payload.speaker_effective)
+
     def test_hardware_ws_schema_rejects_payload_without_status_fields(self):
         from pydantic import ValidationError
         from app.schemas import HardwareData

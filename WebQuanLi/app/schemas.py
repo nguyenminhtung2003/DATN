@@ -297,8 +297,25 @@ class HardwareData(BaseModel):
         return self._coalesce(self.gps_uart_ok, self.gps)
 
     @property
-    def speaker_effective(self) -> bool:
+    def speaker_output_effective(self) -> bool:
         return self._coalesce(self.speaker_output_ok, self.speaker)
+
+    @property
+    def speaker_effective(self) -> bool:
+        components = [
+            value
+            for value in (
+                self.bluetooth_adapter_ok,
+                self.bluetooth_speaker_connected,
+                self.speaker_output_ok,
+            )
+            if value is not None
+        ]
+        if not components:
+            return bool(self.speaker)
+        if self.speaker_output_ok is None and not self.speaker:
+            components.append(False)
+        return all(bool(value) for value in components)
 
     @property
     def websocket_effective(self) -> bool:
